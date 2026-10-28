@@ -69,7 +69,7 @@ export function formatStatus(
     `Interval: ${config.interval}\n` +
     `Scan schedule: ${
       config.stateBackend === "upstash"
-        ? "configured by Vercel Cron"
+        ? "scheduled by cron-job.org"
         : `${Math.round(config.scanIntervalMs / 60_000)} minute(s)`
     }\n` +
     `Minimum planned R:R: ${config.minRewardRisk}:1`

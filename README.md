@@ -17,16 +17,20 @@ Sotra Signals is a private Telegram bot for paper-testing rule-based market aler
 
 The local state file defaults to `data/state.json`; it is created automatically and excluded from version control. Set `STATE_FILE` to change its location. Keep `.env` private.
 
-## Deploy to Vercel
+## Deploy to Vercel with cron-job.org
 
 The long-polling `npm run dev` process is for local development. Vercel uses serverless functions, so the deployed bot receives Telegram updates through a webhook and stores state in Upstash Redis.
 
 1. Create a Vercel project from this repository and connect an Upstash Redis database. Add these environment variables to Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TWELVE_DATA_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `CRON_SECRET`. Generate separate random values for the two secrets; the Telegram webhook secret must use only letters, numbers, `_`, or `-`.
-2. Deploy the project. Vercel's Hobby plan supports one cron execution per day, so the included `vercel.json` scans daily at 09:00 UTC (Vercel Hobby can run it within that hour). Five-minute scans require a Vercel Pro plan; on Pro, change the cron schedule to `*/5 * * * *`.
-3. Configure the Telegram webhook using your deployment URL: `npm run webhook:set -- https://your-project.vercel.app`. Provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in the shell or a local, uncommitted `.env` file. The script prints only the deployment host.
+2. Deploy the project.
+3. Create a cron-job.org job targeting `https://your-project.vercel.app/api/cron`, using `GET` and HTTP bearer authentication. Schedule it daily at 09:00 in the timezone you want. Do not put the authentication value in the URL. This runs the existing market scan and sends new signal alerts; it does not generate a separate multi-timeframe morning report.
 4. Verify the deployment at `/api/cron` only through Vercel Cron or an authorized request with `Authorization: Bearer <CRON_SECRET>`. Telegram posts to `/api/telegram`; its webhook secret is verified.
 
-The Vercel root URL serves a small informational page from `public/`; this project has no web dashboard. The Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; on Vercel, change the cron expression in `vercel.json` to adjust scheduled scans. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
+No Vercel Cron schedule is configured; use cron-job.org for scheduled scan requests and authorized calls when checking `/api/cron`.
+
+Configure the Telegram webhook with `npm run webhook:set -- https://your-project.vercel.app`. Provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in the shell or a local, uncommitted `.env` file.
+
+The Vercel root URL serves a small informational page from `public/`; this project has no web dashboard. The Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; cron-job.org controls the timing of serverless scans. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
 
 ## MVC structure
 
@@ -52,6 +56,7 @@ The Vercel root URL serves a small informational page from `public/`; this proje
 | `MAX_CANDLE_AGE_MINUTES` | `20` | Maximum age allowed for the latest completed candle |
 | `MAX_STORED_SIGNAL_KEYS` | `1000` | Maximum retained delivery-deduplication keys |
 | `STATE_FILE` | `data/state.json` | Optional local state-file path |
+| `CRON_SECRET` | Required on Vercel | Bearer token required by cron-job.org when calling `/api/cron` |
 
 ## Commands
 
