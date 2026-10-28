@@ -51,10 +51,10 @@ function findSignal(
   symbol: string,
   config: StrategyConfig,
   direction: SignalDirection,
-  confirmation: Candle
+  confirmation: Candle,
+  confirmationIndex: number
 ): Signal | null {
   const firstPossibleSweep = Math.max(config.swingLookback, config.structureLookback);
-  const confirmationIndex = candles.length - 2;
 
   for (let sweepIndex = confirmationIndex - 1; sweepIndex >= firstPossibleSweep; sweepIndex -= 1) {
     const sweep = candles[sweepIndex];
@@ -100,7 +100,8 @@ export function analyzeCandles(
   input: Candle[],
   symbol: string,
   config: StrategyConfig,
-  now = Date.now()
+  now = Date.now(),
+  latestCandleIsForming = true
 ): Signal | null {
   if (
     !Number.isInteger(config.swingLookback) ||
@@ -125,19 +126,21 @@ export function analyzeCandles(
     }
   }
 
-  const minimumHistory = Math.max(config.swingLookback, config.structureLookback) + 3;
-  if (candles.length < minimumHistory) {
+  const confirmationIndex = candles.length - (latestCandleIsForming ? 2 : 1);
+  const minimumHistory = Math.max(config.swingLookback, config.structureLookback) +
+    (latestCandleIsForming ? 3 : 2);
+  if (confirmationIndex < 0 || candles.length < minimumHistory) {
     return null;
   }
 
-  const confirmation = candles[candles.length - 2];
+  const confirmation = candles[confirmationIndex];
   const age = now - confirmation.timestamp;
   if (age < 0 || age > config.maxCandleAgeMinutes * 60_000) {
     return null;
   }
 
-  const bullish = findSignal(candles, symbol, config, "BUY", confirmation);
-  const bearish = findSignal(candles, symbol, config, "SELL", confirmation);
+  const bullish = findSignal(candles, symbol, config, "BUY", confirmation, confirmationIndex);
+  const bearish = findSignal(candles, symbol, config, "SELL", confirmation, confirmationIndex);
   if (bullish && bearish) {
     return null;
   }

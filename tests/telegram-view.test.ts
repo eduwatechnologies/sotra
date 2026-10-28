@@ -3,6 +3,7 @@ import test from "node:test";
 import type { AppConfig } from "../src/config";
 import {
   formatMarkets,
+  formatMorningReport,
   formatScanResults,
   formatSignal,
   formatStatus,
@@ -28,6 +29,7 @@ const config: AppConfig = {
 test("formats status, watchlist, and welcome screens from application data", () => {
   assert.match(formatStatus(config, true), /Alerts: paused/);
   assert.match(formatStatus(config, false), /EUR\/USD, XAU\/USD/);
+  assert.match(formatStatus({ ...config, stateBackend: "upstash" }, false), /cron-job\.org/);
   assert.equal(formatMarkets(config.symbols), "Configured markets:\n• EUR/USD\n• XAU/USD");
   assert.match(formatWelcome(), /\/scan — scan now/);
 });
@@ -82,6 +84,41 @@ test("formats signal alerts with levels and a UTC timestamp", () => {
   assert.match(message, /1\.09000/);
   assert.match(message, /1\.12000/);
   assert.match(message, /2026-01-01T00:00:00\.000Z/);
+});
+
+test("formats the daily Lagos multi-timeframe report", () => {
+  const message = formatMorningReport(
+    [
+      {
+        symbol: "EUR/USD",
+        bias: "bullish",
+        biasExplanation: "Recent 4H swings show higher highs and higher lows.",
+        trendline: "aligned",
+        marketStructureShift: "confirmed",
+        orderBlock: { low: 1.08, high: 1.09 },
+        entrySignal: {
+          symbol: "EUR/USD",
+          direction: "BUY",
+          entry: 1.1,
+          stopLoss: 1.09,
+          takeProfit: 1.12,
+          rewardRisk: 2,
+          timestamp: Date.UTC(2026, 9, 28, 8),
+          rationale: "Liquidity sweep and structure confirmation.",
+        },
+        entryExplanation: "5-minute setup aligned.",
+        staleTimeframes: [],
+      },
+    ],
+    Date.UTC(2026, 9, 28, 8)
+  );
+  assert.match(message, /MORNING MARKET REPORT/);
+  assert.match(message, /Africa\/Lagos/);
+  assert.match(message, /4H BULLISH/);
+  assert.match(message, /1H trendline: aligned; MSS: confirmed/);
+  assert.match(message, /1H order-block approximation/);
+  assert.match(message, /5M entry: BUY/);
+  assert.match(message, /Analysis only/);
 });
 
 test("uses a red downward indicator for sell signals", () => {

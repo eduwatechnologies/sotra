@@ -1,6 +1,8 @@
 import type { AppConfig } from "../config";
 import type { ScanResult } from "../services/scanner";
+import type { MorningReportEntry } from "../services/morning-report";
 import type { Signal } from "../models/domain";
+import { MORNING_REPORT_TIMEZONE } from "../services/morning-report";
 
 function formatPrice(value: number, symbol: string): string {
   return value.toFixed(symbol.toUpperCase().includes("XAU") ? 2 : 5);
@@ -69,10 +71,57 @@ export function formatStatus(
     `Interval: ${config.interval}\n` +
     `Scan schedule: ${
       config.stateBackend === "upstash"
-        ? "scheduled by cron-job.org"
+        ? "daily 09:00 Africa/Lagos via cron-job.org"
         : `${Math.round(config.scanIntervalMs / 60_000)} minute(s)`
     }\n` +
     `Minimum planned R:R: ${config.minRewardRisk}:1`
+  );
+}
+
+export function formatMorningReport(
+  entries: MorningReportEntry[],
+  generatedAt = Date.now()
+): string {
+  const timestamp = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: MORNING_REPORT_TIMEZONE,
+  }).format(generatedAt);
+  const sections = entries.map((entry) => {
+    if (entry.error) {
+      return `⚠️ ${entry.symbol}\nMarket data unavailable: ${entry.error}`;
+    }
+
+    const biasIcon = entry.bias === "bullish" ? "🟢" : entry.bias === "bearish" ? "🔴" : "⚪";
+    const lines = [
+      `${biasIcon} ${entry.symbol} — 4H ${entry.bias.toUpperCase()}`,
+      `📈 4H bias: ${entry.biasExplanation}`,
+      `🧭 1H trendline: ${entry.trendline}; MSS: ${entry.marketStructureShift}`,
+      entry.orderBlock
+        ? `🧱 1H order-block approximation: ${formatPrice(entry.orderBlock.low, entry.symbol)}–${formatPrice(entry.orderBlock.high, entry.symbol)}`
+        : "🧱 1H order-block approximation: not identified",
+    ];
+    if (entry.entrySignal) {
+      const signal = entry.entrySignal;
+      lines.push(
+        `🎯 5M entry: ${signal.direction} @ ${formatPrice(signal.entry, entry.symbol)}`,
+        `🛑 Stop: ${formatPrice(signal.stopLoss, entry.symbol)}  |  🏁 Target: ${formatPrice(signal.takeProfit, entry.symbol)}  |  R:R ${signal.rewardRisk.toFixed(2)}:1`
+      );
+    } else {
+      lines.push(`⏳ 5M entry: ${entry.entryExplanation}`);
+    }
+    if (entry.staleTimeframes.length > 0) {
+      lines.push(`⚠️ Stale data: ${entry.staleTimeframes.join(", ")}`);
+    }
+    return lines.join("\n");
+  });
+
+  return (
+    `☀️ SOTRA SIGNALS — MORNING MARKET REPORT\n` +
+    `🕒 ${timestamp} (${MORNING_REPORT_TIMEZONE})\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `${sections.join("\n\n")}\n\n` +
+    "Rules are mechanical approximations: 4H swing bias, 1H swing trendline/MSS and last-opposing-candle zone, then 5M liquidity-sweep confirmation. Analysis only; verify market conditions and risk independently."
   );
 }
 

@@ -2,12 +2,13 @@ import { timingSafeEqual } from "node:crypto";
 import { getVercelRuntime } from "../src/vercel-runtime";
 import { safeErrorText } from "../src/logging";
 import type { FunctionRequest, FunctionResponse } from "../src/platform/vercel-http-types";
+import { formatMorningReport } from "../src/views/telegram-view";
 
 export const config = {
   maxDuration: 60,
 };
 
-export default async function scheduledScan(
+export default async function scheduledMorningReport(
   request: FunctionRequest,
   response: FunctionResponse
 ): Promise<void> {
@@ -30,28 +31,43 @@ export default async function scheduledScan(
 
   try {
     const runtime = await getVercelRuntime();
-    const results = await runtime.scanner.scan({
-      publishAlerts: true,
-      scheduled: true,
-    });
-    const failed = results.filter((result) => result.status === "error");
-    response.status(failed.length > 0 ? 502 : 200).json({
-      scanned: results.length,
-      failed: failed.length,
-      results: results.map(({ symbol, status }) => ({ symbol, status })),
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "A market scan is already running.") {
-      response.status(409).json({ error: error.message });
+    if ((await runtime.state.get()).paused) {
+      response.status(200).json({ sent: false, paused: true });
       return;
     }
+    if (!(await runtime.state.acquireScanLock())) {
+      response.status(409).json({ error: "A market scan is already running." });
+      return;
+    }
+
+    try {
+      const results = await runtime.generateMorningReport();
+      await runtime.bot.telegram.sendMessage(
+        runtime.config.telegramChatId,
+        formatMorningReport(results)
+      );
+      const failed = results.filter((result) => result.error);
+      response.status(200).json({
+        sent: true,
+        symbols: results.length,
+        unavailable: failed.length,
+        results: results.map(({ symbol, error, bias }) => ({
+          symbol,
+          bias,
+          status: error ? "error" : "reported",
+        })),
+      });
+    } finally {
+      await runtime.state.releaseScanLock();
+    }
+  } catch (error) {
     console.error(
-      `Vercel scheduled scan failed. ${safeErrorText(error, [
+      `Vercel morning report failed. ${safeErrorText(error, [
         process.env.TELEGRAM_BOT_TOKEN ?? "",
         process.env.TWELVE_DATA_API_KEY ?? "",
         process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
       ])}`
     );
-    response.status(500).json({ error: "Scheduled scan failed" });
+    response.status(500).json({ error: "Morning report failed" });
   }
 }

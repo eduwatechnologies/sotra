@@ -5,6 +5,7 @@ import { safeErrorText } from "./logging";
 import { StateStore, type StateRepository } from "./models/state";
 import { UpstashStateStore } from "./models/upstash-state";
 import { fetchCandles } from "./services/market-data";
+import { generateMorningReport } from "./services/morning-report";
 import { SignalScanner } from "./services/scanner";
 import { ScanScheduler } from "./services/scheduler";
 import { withStartupTimeout } from "./startup-timeout";
@@ -17,6 +18,7 @@ export interface ApplicationRuntime {
   bot: Telegraf;
   scanner: SignalScanner;
   state: StateRepository;
+  generateMorningReport: () => ReturnType<typeof generateMorningReport>;
 }
 
 function createStateRepository(config: AppConfig): StateRepository {
@@ -44,7 +46,16 @@ export async function createRuntime(
       ),
   });
   registerTelegramController(bot, config, scanner, state);
-  return { config, bot, scanner, state };
+  return {
+    config,
+    bot,
+    scanner,
+    state,
+    generateMorningReport: () =>
+      generateMorningReport(config, {
+        fetchCandles,
+      }),
+  };
 }
 
 export async function startApplication(config: AppConfig = loadConfig()): Promise<void> {
