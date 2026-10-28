@@ -7,16 +7,23 @@ function formatPrice(value: number, symbol: string): string {
 }
 
 export function formatSignal(signal: Signal): string {
+  const isBuy = signal.direction === "BUY";
+  const directionIcon = isBuy ? "🟢" : "🔴";
+  const directionArrow = isBuy ? "↗️" : "↘️";
+
   return (
-    `Sotra Signals\n` +
-    `${signal.symbol} — ${signal.direction}\n` +
-    `Entry: ${formatPrice(signal.entry, signal.symbol)}\n` +
-    `Stop loss: ${formatPrice(signal.stopLoss, signal.symbol)}\n` +
-    `Take profit: ${formatPrice(signal.takeProfit, signal.symbol)}\n` +
-    `Planned R:R: ${signal.rewardRisk.toFixed(2)}:1\n` +
-    `Setup: ${signal.rationale}\n` +
-    `Signal candle (UTC): ${new Date(signal.timestamp).toISOString()}\n\n` +
-    "Verify broker price, spread, and risk before acting. This is not financial advice."
+    `✨ SOTRA SIGNALS\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `${directionIcon} ${signal.symbol}  |  ${signal.direction} ${directionArrow}\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🎯 Entry       ${formatPrice(signal.entry, signal.symbol)}\n` +
+    `🛑 Stop loss   ${formatPrice(signal.stopLoss, signal.symbol)}\n` +
+    `🏁 Take profit ${formatPrice(signal.takeProfit, signal.symbol)}\n` +
+    `⚖️ Planned R:R ${signal.rewardRisk.toFixed(2)}:1\n\n` +
+    `🔎 SETUP\n${signal.rationale}\n\n` +
+    `🕒 ${new Date(signal.timestamp).toISOString()} UTC\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    "⚠️ Verify broker price, spread, and risk before acting. Not financial advice."
   );
 }
 

@@ -4,7 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Sotra Signals is a private Telegram market-alert bot.">
+    <meta name="theme-color" content="#101820">
     <title>Sotra Signals</title>
+    <link rel="icon" type="image/png" href="/sotra-logo.png">
     <style>
       :root {
         color-scheme: dark;
@@ -28,10 +30,20 @@
         border: 1px solid #344650;
         border-radius: 1rem;
         background: #17242c;
+        text-align: center;
+      }
+
+      .logo {
+        display: block;
+        width: min(100%, 24rem);
+        height: auto;
+        margin: 0 auto 1.5rem;
+        border-radius: 50%;
       }
 
       h1 {
-        margin-top: 0;
+        margin: 0 0 1rem;
+        color: #ffd35a;
       }
 
       p {
@@ -48,6 +60,7 @@
   </head>
   <body>
     <main>
+      <img class="logo" src="/sotra-logo.png" alt="Sotra Trading Bot logo in gold on a black background">
       <h1>Sotra Signals</h1>
       <p>
         This service delivers rule-based market alerts through a private Telegram bot.

@@ -72,8 +72,29 @@ test("formats signal alerts with levels and a UTC timestamp", () => {
     timestamp: Date.UTC(2026, 0, 1),
     rationale: "Sweep and structure confirmation.",
   });
-  assert.match(message, /Entry: 1\.10000/);
-  assert.match(message, /Stop loss: 1\.09000/);
-  assert.match(message, /Take profit: 1\.12000/);
+  assert.match(message, /✨ SOTRA SIGNALS/);
+  assert.match(message, /🟢 EUR\/USD\s+\|\s+BUY ↗️/);
+  assert.match(message, /🎯 Entry/);
+  assert.match(message, /🛑 Stop loss/);
+  assert.match(message, /🏁 Take profit/);
+  assert.match(message, /⚖️ Planned R:R/);
+  assert.match(message, /Entry\s+1\.10000/);
+  assert.match(message, /1\.09000/);
+  assert.match(message, /1\.12000/);
   assert.match(message, /2026-01-01T00:00:00\.000Z/);
+});
+
+test("uses a red downward indicator for sell signals", () => {
+  const message = formatSignal({
+    symbol: "XAU/USD",
+    direction: "SELL",
+    entry: 2350,
+    stopLoss: 2360,
+    takeProfit: 2330,
+    rewardRisk: 2,
+    timestamp: Date.UTC(2026, 0, 1),
+    rationale: "Liquidity sweep and bearish structure shift.",
+  });
+  assert.match(message, /🔴 XAU\/USD\s+\|\s+SELL ↘️/);
+  assert.match(message, /Stop loss\s+2360\.00/);
 });
