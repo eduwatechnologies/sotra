@@ -60,7 +60,11 @@ export function formatStatus(
     `Alerts: ${paused ? "paused" : "active"}\n` +
     `Markets: ${config.symbols.join(", ")}\n` +
     `Interval: ${config.interval}\n` +
-    `Scan frequency: ${Math.round(config.scanIntervalMs / 60_000)} minute(s)\n` +
+    `Scan schedule: ${
+      config.stateBackend === "upstash"
+        ? "configured by Vercel Cron"
+        : `${Math.round(config.scanIntervalMs / 60_000)} minute(s)`
+    }\n` +
     `Minimum planned R:R: ${config.minRewardRisk}:1`
   );
 }

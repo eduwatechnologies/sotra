@@ -17,6 +17,16 @@ test("loads documented defaults and trims configured symbols", () => {
   assert.equal(config.swingLookback, 10);
   assert.equal(config.structureLookback, 5);
   assert.equal(config.maxCandleAgeMinutes, 20);
+  assert.equal(config.stateBackend, "file");
+});
+
+test("selects Upstash as the Vercel state backend by default", () => {
+  const config = loadConfig({ ...required, VERCEL: "1" });
+  assert.equal(config.stateBackend, "upstash");
+  assert.throws(
+    () => loadConfig({ ...required, VERCEL: "1", STATE_BACKEND: "file" }),
+    /Vercel deployments require STATE_BACKEND=upstash/
+  );
 });
 
 test("fails clearly when required credentials are missing", () => {

@@ -2,7 +2,7 @@ import type { Telegraf } from "telegraf";
 import type { AppConfig } from "../config";
 import { safeErrorText } from "../logging";
 import type { SignalScanner } from "../services/scanner";
-import { StateStore } from "../models/state";
+import type { StateRepository } from "../models/state";
 import {
   formatMarkets,
   formatScanResults,
@@ -15,7 +15,7 @@ export function registerTelegramController(
   bot: Telegraf,
   config: AppConfig,
   scanner: SignalScanner,
-  state: StateStore
+  state: StateRepository
 ): void {
   bot.use(async (ctx, next) => {
     const message = ctx.message && "text" in ctx.message ? ctx.message.text : undefined;
@@ -31,7 +31,7 @@ export function registerTelegramController(
   });
 
   bot.command("status", async (ctx) => {
-    await ctx.reply(formatStatus(config, state.get().paused));
+    await ctx.reply(formatStatus(config, (await state.get()).paused));
   });
 
   bot.command("markets", async (ctx) => {
@@ -40,12 +40,12 @@ export function registerTelegramController(
 
   bot.command("scan", async (ctx) => {
     try {
-      const pausedAtStart = state.get().paused;
+      const pausedAtStart = (await state.get()).paused;
       const results = await scanner.scan({
         publishAlerts: !pausedAtStart,
         scheduled: false,
       });
-      await ctx.reply(formatScanResults(results, pausedAtStart || state.get().paused));
+      await ctx.reply(formatScanResults(results, pausedAtStart || (await state.get()).paused));
     } catch (error) {
       if (error instanceof Error && error.message === "A market scan is already running.") {
         await ctx.reply("A scan is already running. Please try again shortly.");
@@ -62,7 +62,7 @@ export function registerTelegramController(
   });
 
   bot.command("last", async (ctx) => {
-    const signal = state.get().latestSignal;
+    const signal = (await state.get()).latestSignal;
     await ctx.reply(signal ? formatSignal(signal) : "No signal has been detected yet.");
   });
 

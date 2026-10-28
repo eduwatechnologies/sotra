@@ -21,6 +21,7 @@ const config: AppConfig = {
   maxCandleAgeMinutes: 20,
   maxStoredSignalKeys: 10,
   stateFile: "",
+  stateBackend: "file",
 };
 
 function fixture(): Candle[] {
@@ -101,7 +102,7 @@ test("manual scans analyze while paused but do not deliver alerts", async () => 
     const result = await scanner.scan({ publishAlerts: false, scheduled: false });
     assert.equal(result[0].status, "signal");
     assert.equal(result[0].sent, false);
-    assert.equal(state.get().paused, true);
+    assert.equal((await state.get()).paused, true);
     assert.equal(deliveryCount, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -116,6 +117,35 @@ test("rejects overlapping scans", async () => {
     let finishFetch!: (candles: Candle[]) => void;
     const fetching = new Promise<Candle[]>((resolve) => {
       finishFetch = resolve;
+    });
+
+    test("releases a failed alert claim so a later scan can retry delivery", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-scanner-"));
+      try {
+        const state = await createState(directory);
+        let deliveryCount = 0;
+        const now = fixture()[6].timestamp + 5 * 60_000;
+        const scanner = new SignalScanner(config, state, {
+          fetchCandles: async () => fixture(),
+          publish: async () => {
+            deliveryCount += 1;
+            if (deliveryCount === 1) {
+              throw new Error("Telegram is temporarily unavailable");
+            }
+          },
+          logError: () => undefined,
+          now: () => now,
+        });
+
+        const failed = await scanner.scan({ publishAlerts: true, scheduled: true });
+        const retried = await scanner.scan({ publishAlerts: true, scheduled: true });
+        assert.equal(failed[0].status, "error");
+        assert.equal(retried[0].status, "signal");
+        assert.equal(retried[0].sent, true);
+        assert.equal(deliveryCount, 2);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
     });
     const started = new Promise<void>((resolve) => {
       startFetch = resolve;
@@ -132,6 +162,15 @@ test("rejects overlapping scans", async () => {
     await started;
     await assert.rejects(
       scanner.scan({ publishAlerts: false, scheduled: false }),
+      /already running/
+    );
+    const secondScanner = new SignalScanner(config, state, {
+      fetchCandles: async () => [],
+      publish: async () => undefined,
+      logError: () => assert.fail("Unexpected scan error"),
+    });
+    await assert.rejects(
+      secondScanner.scan({ publishAlerts: false, scheduled: false }),
       /already running/
     );
     finishFetch([]);

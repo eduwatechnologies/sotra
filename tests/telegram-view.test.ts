@@ -22,6 +22,7 @@ const config: AppConfig = {
   maxCandleAgeMinutes: 20,
   maxStoredSignalKeys: 1000,
   stateFile: "state.json",
+  stateBackend: "file",
 };
 
 test("formats status, watchlist, and welcome screens from application data", () => {

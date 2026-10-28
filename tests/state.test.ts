@@ -34,7 +34,7 @@ test("persists pause state, latest signal, and bounded deduplication keys", asyn
     assert.equal(loaded.paused, true);
     assert.deepEqual(loaded.latestSignal, signal);
     assert.equal(loaded.sentSignalKeys.length, 2);
-    assert.equal(restarted.hasSent(signalKey(signal)), false);
+    assert.equal(await restarted.hasSent(signalKey(signal)), false);
     assert.equal(JSON.parse(await readFile(file, "utf8")).paused, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -57,7 +57,27 @@ test("serializes concurrent state updates without losing changes", async () => {
     const loaded = await restarted.load();
     assert.equal(loaded.paused, true);
     assert.deepEqual(loaded.latestSignal, signal);
-    assert.equal(restarted.hasSent(signalKey(signal)), true);
+    assert.equal(await restarted.hasSent(signalKey(signal)), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("claims alerts and scan locks only once at a time", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-state-"));
+  try {
+    const state = new StateStore(path.join(directory, "state.json"), 10);
+    await state.load();
+    const claimResults = await Promise.all([
+      state.claimSignal(signalKey(signal)),
+      state.claimSignal(signalKey(signal)),
+    ]);
+    assert.equal(claimResults.filter(Boolean).length, 1);
+    assert.equal(await state.acquireScanLock(), true);
+    assert.equal(await state.acquireScanLock(), false);
+    await state.releaseSignal(signalKey(signal));
+    await state.releaseScanLock();
+    assert.equal(await state.claimSignal(signalKey(signal)), true);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

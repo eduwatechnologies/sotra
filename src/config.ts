@@ -13,6 +13,7 @@ export interface AppConfig {
   maxCandleAgeMinutes: number;
   maxStoredSignalKeys: number;
   stateFile: string;
+  stateBackend: "file" | "upstash";
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -56,6 +57,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("INTERVAL must use a supported format such as 5min or 1h.");
   }
 
+  const defaultStateBackend = env.VERCEL === "1" ? "upstash" : "file";
+  const stateBackend = env.STATE_BACKEND?.trim() || defaultStateBackend;
+  if (stateBackend !== "file" && stateBackend !== "upstash") {
+    throw new Error("STATE_BACKEND must be either file or upstash.");
+  }
+  if (env.VERCEL === "1" && stateBackend !== "upstash") {
+    throw new Error("Vercel deployments require STATE_BACKEND=upstash.");
+  }
+
   return {
     telegramBotToken: required(env, "TELEGRAM_BOT_TOKEN"),
     telegramChatId,
@@ -69,5 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxCandleAgeMinutes: positiveNumber(env, "MAX_CANDLE_AGE_MINUTES", 20),
     maxStoredSignalKeys: positiveNumber(env, "MAX_STORED_SIGNAL_KEYS", 1_000, true),
     stateFile: path.resolve(env.STATE_FILE?.trim() || path.join("data", "state.json")),
+    stateBackend,
   };
 }

@@ -1,7 +1,7 @@
 import type { AppConfig } from "../config";
 import { fetchCandles } from "./market-data";
 import { analyzeCandles } from "./strategy";
-import { signalKey, StateStore } from "../models/state";
+import { signalKey, type StateRepository } from "../models/state";
 import type { Signal } from "../models/domain";
 
 export interface ScanResult {
@@ -29,12 +29,15 @@ export class SignalScanner {
 
   constructor(
     private readonly config: AppConfig,
-    private readonly state: StateStore,
+    private readonly state: StateRepository,
     private readonly dependencies: ScannerDependencies
   ) {}
 
   async scan(options: ScanOptions): Promise<ScanResult[]> {
     if (this.running) {
+      throw new Error("A market scan is already running.");
+    }
+    if (!(await this.state.acquireScanLock())) {
       throw new Error("A market scan is already running.");
     }
     this.running = true;
@@ -43,7 +46,7 @@ export class SignalScanner {
     try {
       const results: ScanResult[] = [];
       for (const symbol of this.config.symbols) {
-        if (options.scheduled && this.state.get().paused) {
+        if (options.scheduled && (await this.state.get()).paused) {
           results.push({ symbol, status: "paused" });
           continue;
         }
@@ -70,17 +73,26 @@ export class SignalScanner {
 
           await this.state.recordLatestSignal(signal);
           const key = signalKey(signal);
-          if (this.state.hasSent(key)) {
+          if (await this.state.hasSent(key)) {
             results.push({ symbol, status: "duplicate", signal });
             continue;
           }
-          if (!options.publishAlerts || this.state.get().paused) {
+          if (!options.publishAlerts || (await this.state.get()).paused) {
             results.push({ symbol, status: "signal", signal, sent: false });
             continue;
           }
 
-          await this.dependencies.publish(signal);
-          await this.state.recordSentSignal(key);
+          if (!(await this.state.claimSignal(key))) {
+            results.push({ symbol, status: "duplicate", signal });
+            continue;
+          }
+          try {
+            await this.dependencies.publish(signal);
+            await this.state.recordSentSignal(key);
+          } catch (error) {
+            await this.state.releaseSignal(key);
+            throw error;
+          }
           results.push({ symbol, status: "signal", signal, sent: true });
           console.info(`Signal delivered for ${symbol} (${signal.direction}).`);
         } catch (error) {
@@ -95,6 +107,7 @@ export class SignalScanner {
       return results;
     } finally {
       this.running = false;
+      await this.state.releaseScanLock();
       console.info("Market scan finished.");
     }
   }

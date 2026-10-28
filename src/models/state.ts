@@ -9,6 +9,19 @@ export interface PersistedState {
   latestSignal: Signal | null;
 }
 
+export interface StateRepository {
+  load(): Promise<PersistedState>;
+  get(): Promise<PersistedState>;
+  hasSent(key: string): Promise<boolean>;
+  claimSignal(key: string): Promise<boolean>;
+  releaseSignal(key: string): Promise<void>;
+  setPaused(paused: boolean): Promise<void>;
+  recordLatestSignal(signal: Signal): Promise<void>;
+  recordSentSignal(key: string): Promise<void>;
+  acquireScanLock(): Promise<boolean>;
+  releaseScanLock(): Promise<void>;
+}
+
 const DEFAULT_STATE: PersistedState = {
   paused: false,
   sentSignalKeys: [],
@@ -57,11 +70,17 @@ export function signalKey(signal: Signal): string {
 export class StateStore {
   private data: PersistedState = { ...DEFAULT_STATE };
   private writeQueue: Promise<void> = Promise.resolve();
+  private readonly claimedSignalKeys = new Set<string>();
+  private scanLocked = false;
 
   constructor(
     private readonly filePath: string,
     private readonly maxSignalKeys: number
-  ) {}
+  ) {
+    if (!Number.isInteger(maxSignalKeys) || maxSignalKeys <= 0) {
+      throw new Error("Maximum stored signal keys must be a positive integer.");
+    }
+  }
 
   async load(): Promise<PersistedState> {
     try {
@@ -77,7 +96,7 @@ export class StateStore {
     return this.get();
   }
 
-  get(): PersistedState {
+  async get(): Promise<PersistedState> {
     return {
       paused: this.data.paused,
       sentSignalKeys: [...this.data.sentSignalKeys],
@@ -85,8 +104,20 @@ export class StateStore {
     };
   }
 
-  hasSent(key: string): boolean {
+  async hasSent(key: string): Promise<boolean> {
     return this.data.sentSignalKeys.includes(key);
+  }
+
+  async claimSignal(key: string): Promise<boolean> {
+    if ((await this.hasSent(key)) || this.claimedSignalKeys.has(key)) {
+      return false;
+    }
+    this.claimedSignalKeys.add(key);
+    return true;
+  }
+
+  async releaseSignal(key: string): Promise<void> {
+    this.claimedSignalKeys.delete(key);
   }
 
   async setPaused(paused: boolean): Promise<void> {
@@ -105,6 +136,19 @@ export class StateStore {
         key,
       ].slice(-this.maxSignalKeys),
     }));
+    this.claimedSignalKeys.delete(key);
+  }
+
+  async acquireScanLock(): Promise<boolean> {
+    if (this.scanLocked) {
+      return false;
+    }
+    this.scanLocked = true;
+    return true;
+  }
+
+  async releaseScanLock(): Promise<void> {
+    this.scanLocked = false;
   }
 
   private async update(createNext: (current: PersistedState) => PersistedState): Promise<void> {

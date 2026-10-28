@@ -17,6 +17,17 @@ Sotra Signals is a private Telegram bot for paper-testing rule-based market aler
 
 The local state file defaults to `data/state.json`; it is created automatically and excluded from version control. Set `STATE_FILE` to change its location. Keep `.env` private.
 
+## Deploy to Vercel
+
+The long-polling `npm run dev` process is for local development. Vercel uses serverless functions, so the deployed bot receives Telegram updates through a webhook and stores state in Upstash Redis.
+
+1. Create a Vercel project from this repository and connect an Upstash Redis database. Add these environment variables to Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TWELVE_DATA_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `CRON_SECRET`. Generate separate random values for the two secrets; the Telegram webhook secret must use only letters, numbers, `_`, or `-`.
+2. Deploy the project. Vercel's Hobby plan supports one cron execution per day, so the included `vercel.json` scans daily at 09:00 UTC (Vercel Hobby can run it within that hour). Five-minute scans require a Vercel Pro plan; on Pro, change the cron schedule to `*/5 * * * *`.
+3. Configure the Telegram webhook using your deployment URL: `npm run webhook:set -- https://your-project.vercel.app`. Provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in the shell or a local, uncommitted `.env` file. The script prints only the deployment host.
+4. Verify the deployment at `/api/cron` only through Vercel Cron or an authorized request with `Authorization: Bearer <CRON_SECRET>`. Telegram posts to `/api/telegram`; its webhook secret is verified.
+
+The Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; on Vercel, change the cron expression in `vercel.json` to adjust scheduled scans. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
+
 ## MVC structure
 
 - **Models** (`src/models/`) define domain types and persist pause state, detected signals, and delivery keys.
@@ -34,7 +45,7 @@ The local state file defaults to `data/state.json`; it is created automatically 
 | `TWELVE_DATA_API_KEY` | Required | Twelve Data API key |
 | `SYMBOLS` | `XAU/USD,EUR/USD,GBP/USD` | Comma-separated Twelve Data symbols |
 | `INTERVAL` | `5min` | Candle interval, for example `5min` or `1h` |
-| `SCAN_INTERVAL_MS` | `300000` | Delay between scheduled scans |
+| `SCAN_INTERVAL_MS` | `300000` | Delay between scheduled scans in local polling mode |
 | `MIN_REWARD_RISK` | `2` | Planned reward-to-risk target |
 | `SWING_LOOKBACK` | `10` | Prior candles used for the liquidity extreme |
 | `STRUCTURE_LOOKBACK` | `5` | Candles before a sweep used to establish structure |

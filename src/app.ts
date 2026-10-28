@@ -1,29 +1,41 @@
+import { Telegraf } from "telegraf";
 import { registerTelegramController } from "./controllers/telegram-controller";
 import { loadConfig, type AppConfig } from "./config";
 import { safeErrorText } from "./logging";
+import { StateStore, type StateRepository } from "./models/state";
+import { UpstashStateStore } from "./models/upstash-state";
 import { fetchCandles } from "./services/market-data";
-import { Telegraf } from "telegraf";
 import { SignalScanner } from "./services/scanner";
 import { ScanScheduler } from "./services/scheduler";
-import { StateStore } from "./models/state";
 import { withStartupTimeout } from "./startup-timeout";
 import { formatSignal } from "./views/telegram-view";
 
 const TELEGRAM_STARTUP_TIMEOUT_MS = 15_000;
 
-export async function startApplication(config: AppConfig = loadConfig()): Promise<void> {
-  console.info("Loading Sotra Signals state...");
-  const state = new StateStore(config.stateFile, config.maxStoredSignalKeys);
-  await state.load();
-  console.info("Local state loaded.");
+export interface ApplicationRuntime {
+  config: AppConfig;
+  bot: Telegraf;
+  scanner: SignalScanner;
+  state: StateRepository;
+}
 
-  let bot: Telegraf | undefined;
+function createStateRepository(config: AppConfig): StateRepository {
+  if (config.stateBackend === "upstash") {
+    return UpstashStateStore.fromEnv(process.env, config.maxStoredSignalKeys);
+  }
+  return new StateStore(config.stateFile, config.maxStoredSignalKeys);
+}
+
+export async function createRuntime(
+  config: AppConfig = loadConfig()
+): Promise<ApplicationRuntime> {
+  const state = createStateRepository(config);
+  await state.load();
+
+  const bot = new Telegraf(config.telegramBotToken);
   const scanner = new SignalScanner(config, state, {
     fetchCandles,
     publish: async (signal) => {
-      if (!bot) {
-        throw new Error("Telegram bot is not initialized.");
-      }
       await bot.telegram.sendMessage(config.telegramChatId, formatSignal(signal));
     },
     logError: (message, error) =>
@@ -31,8 +43,14 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
         `${message} ${safeErrorText(error, [config.telegramBotToken, config.twelveDataApiKey])}`
       ),
   });
-  bot = new Telegraf(config.telegramBotToken);
   registerTelegramController(bot, config, scanner, state);
+  return { config, bot, scanner, state };
+}
+
+export async function startApplication(config: AppConfig = loadConfig()): Promise<void> {
+  console.info("Loading Sotra Signals application...");
+  const runtime = await createRuntime(config);
+  const { bot, scanner, state } = runtime;
 
   let authenticated = false;
   let resolveAuthentication!: () => void;
@@ -46,6 +64,7 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
     authenticated = true;
     resolveAuthentication();
   });
+  let scheduler: ScanScheduler | undefined;
   void polling.catch((error: unknown) => {
     if (!authenticated) {
       rejectAuthentication(error);
@@ -58,17 +77,16 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
         config.twelveDataApiKey,
       ])}`
     );
-    scheduler.stop();
+    scheduler?.stop();
     process.exitCode = 1;
   });
 
-  const scheduler = new ScanScheduler({
+  scheduler = new ScanScheduler({
     intervalMs: config.scanIntervalMs,
     run: async () => {
-      if (state.get().paused) {
-        return;
+      if (!(await state.get()).paused) {
+        await scanner.scan({ publishAlerts: true, scheduled: true });
       }
-      await scanner.scan({ publishAlerts: true, scheduled: true });
     },
     onError: (error) => {
       console.error(
@@ -82,11 +100,11 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
 
   const handleShutdown = (signal: NodeJS.Signals): void => {
     console.info(`Shutting down (${signal}).`);
-    scheduler.stop();
-    if (authenticated && bot) {
+    scheduler?.stop();
+    if (authenticated) {
       bot.stop(signal);
     } else {
-      bot?.telegram.options.agent?.destroy();
+      bot.telegram.options.agent?.destroy();
     }
   };
   process.once("SIGINT", () => handleShutdown("SIGINT"));
@@ -101,7 +119,7 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
     authentication,
     TELEGRAM_STARTUP_TIMEOUT_MS,
     () => {
-      bot?.telegram.options.agent?.destroy();
+      bot.telegram.options.agent?.destroy();
     },
     "Telegram authentication"
   );
