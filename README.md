@@ -24,11 +24,23 @@ The long-polling `npm run dev` process is for local development. Vercel uses ser
 1. Create a Vercel project from this repository and connect an Upstash Redis database. Add these environment variables to Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TWELVE_DATA_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `CRON_SECRET`. Generate separate random values for the two secrets; the Telegram webhook secret must use only letters, numbers, `_`, or `-`.
 2. Deploy the project.
 3. Configure the Telegram webhook with `npm run webhook:set -- https://your-project.vercel.app`. Provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in the shell or a local, uncommitted `.env` file.
-4. In cron-job.org, create a daily `GET` job for `https://your-project.vercel.app/api/cron`. Add an `Authorization` header using the Bearer scheme with the same secret value configured as `CRON_SECRET` in Vercel. Set its timezone to `Africa/Lagos` and its time to 09:00. Do not put the secret in the URL.
+4. In cron-job.org, create two `GET` jobs:
+   - Normal signal scan: `https://your-project.vercel.app/api/signal-cron`, every 30 minutes.
+   - Morning market report: `https://your-project.vercel.app/api/cron`, daily at 09:00 in the `Africa/Lagos` timezone.
 
-At 09:00 Africa/Lagos, `/api/cron` sends a Telegram report for every configured symbol. It assesses 4H swing bias, 1H swing-trendline alignment and market-structure shift, an approximate 1H last-opposing-candle zone, and an aligned 5M liquidity-sweep/structure-confirmation setup. This report is not generated if scheduled alerts are paused. `401` means the request is missing the correct Bearer secret; `409` means another scan/report is active. The endpoint returns `200` after successfully sending the report, including when some symbols could not be fetched.
+   Add this custom HTTP header to both jobs (replace the placeholder with the exact secret value):
 
-The Vercel root URL serves a small informational page from `public/`; this project has no web dashboard. Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; cron-job.org controls the timing of the Vercel morning report. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
+   ```text
+   Authorization: Bearer <CRON_SECRET>
+   ```
+
+   Set `CRON_SECRET` in the Vercel **Production** environment and redeploy after adding or changing it. The cron-job.org header value must match exactly; do not include quotes or put the secret in the URL. Set the morning report job timezone to `Africa/Lagos` and its time to 09:00.
+
+`/api/signal-cron` scans and sends new signals every 30 minutes; existing signal deduplication and pause behavior apply. `/api/cron` sends the morning report once daily at 09:00 Africa/Lagos for every configured symbol. It assesses 4H swing bias, 1H swing-trendline alignment and market-structure shift, an approximate 1H last-opposing-candle zone, and an aligned 5M liquidity-sweep/structure-confirmation setup. The report is not generated if scheduled alerts are paused. Add the same `CRON_SECRET` Authorization header to both jobs. A `GET` from a browser without the header should return `401` by design. `409` means another scan/report is active. Both endpoints return `200` after completing their work, including when some symbols could not be fetched.
+
+At 09:00 Africa/Lagos, `/api/cron` sends a Telegram report for every configured symbol. It assesses 4H swing bias, 1H swing-trendline alignment and market-structure shift, an approximate 1H last-opposing-candle zone, and an aligned 5M liquidity-sweep/structure-confirmation setup. This report is not generated if scheduled alerts are paused. `401` means the request is missing the correct Bearer secret; confirm the production `CRON_SECRET` in Vercel and the cron-job.org `Authorization` header both match exactly. A `GET` from a browser without the header should return `401` by design. `409` means another scan/report is active. The endpoint returns `200` after successfully sending the report, including when some symbols could not be fetched.
+
+The Vercel root URL serves a small informational page from `public/`; this project has no web dashboard. Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; configure the cron-job.org signal job to the same cadence for Vercel. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
 
 ## MVC structure
 
@@ -47,14 +59,14 @@ The Vercel root URL serves a small informational page from `public/`; this proje
 | `TWELVE_DATA_API_KEY` | Required | Twelve Data API key |
 | `SYMBOLS` | `XAU/USD,EUR/USD,GBP/USD` | Comma-separated Twelve Data symbols |
 | `INTERVAL` | `5min` | Candle interval for local scans and `/scan` |
-| `SCAN_INTERVAL_MS` | `300000` | Delay between scheduled scans in local polling mode |
+| `SCAN_INTERVAL_MS` | `1800000` | Delay between scheduled scans in local polling mode (30 minutes by default); configure the Vercel signal cron to the same cadence |
 | `MIN_REWARD_RISK` | `2` | Planned reward-to-risk target |
 | `SWING_LOOKBACK` | `10` | Prior candles used for the liquidity extreme |
 | `STRUCTURE_LOOKBACK` | `5` | Candles before a sweep used to establish structure |
 | `MAX_CANDLE_AGE_MINUTES` | `20` | Maximum age allowed for the latest completed candle |
 | `MAX_STORED_SIGNAL_KEYS` | `1000` | Maximum retained delivery-deduplication keys |
 | `STATE_FILE` | `data/state.json` | Optional local state-file path |
-| `CRON_SECRET` | Required on Vercel | Shared secret for the cron-job.org request to `/api/cron` |
+| `CRON_SECRET` | Required on Vercel | Shared secret for cron-job.org requests to `/api/cron` and `/api/signal-cron` |
 
 ## Commands
 

@@ -6,6 +6,9 @@
     },
     "api/cron.ts": {
       "maxDuration": 60
+    },
+    "api/signal-cron.ts": {
+      "maxDuration": 60
     }
   }
 }

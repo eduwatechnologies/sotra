@@ -72,7 +72,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     twelveDataApiKey: required(env, "TWELVE_DATA_API_KEY"),
     symbols: [...new Set(symbols)],
     interval,
-    scanIntervalMs: positiveNumber(env, "SCAN_INTERVAL_MS", 300_000, true),
+    scanIntervalMs: positiveNumber(env, "SCAN_INTERVAL_MS", 1_800_000, true),
     minRewardRisk: positiveNumber(env, "MIN_REWARD_RISK", 2),
     swingLookback: positiveNumber(env, "SWING_LOOKBACK", 10, true),
     structureLookback: positiveNumber(env, "STRUCTURE_LOOKBACK", 5, true),

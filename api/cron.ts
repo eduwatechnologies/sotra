@@ -1,8 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import { getVercelRuntime } from "../src/vercel-runtime";
 import { safeErrorText } from "../src/logging";
 import type { FunctionRequest, FunctionResponse } from "../src/platform/vercel-http-types";
 import { formatMorningReport } from "../src/views/telegram-view";
+import { isAuthorizedCronRequest } from "./cron-auth";
 
 export const config = {
   maxDuration: 60,
@@ -18,13 +18,7 @@ export default async function scheduledMorningReport(
     return;
   }
 
-  const secret = process.env.CRON_SECRET;
-  const provided = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
-  if (
-    !secret ||
-    Buffer.byteLength(provided) !== Buffer.byteLength(secret) ||
-    !timingSafeEqual(Buffer.from(provided), Buffer.from(secret))
-  ) {
+  if (!isAuthorizedCronRequest(request)) {
     response.status(401).json({ error: "Unauthorized" });
     return;
   }

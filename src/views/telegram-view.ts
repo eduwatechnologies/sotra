@@ -71,7 +71,7 @@ export function formatStatus(
     `Interval: ${config.interval}\n` +
     `Scan schedule: ${
       config.stateBackend === "upstash"
-        ? "daily 09:00 Africa/Lagos via cron-job.org"
+        ? `signals every ${Math.round(config.scanIntervalMs / 60_000)} minute(s) via cron-job.org; morning report daily at 09:00 Africa/Lagos`
         : `${Math.round(config.scanIntervalMs / 60_000)} minute(s)`
     }\n` +
     `Minimum planned R:R: ${config.minRewardRisk}:1`

@@ -12,7 +12,7 @@ test("loads documented defaults and trims configured symbols", () => {
   const config = loadConfig({ ...required, SYMBOLS: " EUR/USD,GBP/USD,EUR/USD " });
   assert.deepEqual(config.symbols, ["EUR/USD", "GBP/USD"]);
   assert.equal(config.interval, "5min");
-  assert.equal(config.scanIntervalMs, 300_000);
+  assert.equal(config.scanIntervalMs, 1_800_000);
   assert.equal(config.minRewardRisk, 2);
   assert.equal(config.swingLookback, 10);
   assert.equal(config.structureLookback, 5);
@@ -38,5 +38,6 @@ test("rejects malformed configuration values", () => {
     () => loadConfig({ ...required, SCAN_INTERVAL_MS: "0" }),
     /SCAN_INTERVAL_MS must be a positive integer/
   );
+  assert.equal(loadConfig({ ...required, SCAN_INTERVAL_MS: "3600000" }).scanIntervalMs, 3_600_000);
   assert.throws(() => loadConfig({ ...required, TELEGRAM_CHAT_ID: "owner" }), /numeric Telegram chat ID/);
 });

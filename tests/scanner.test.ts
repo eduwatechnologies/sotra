@@ -14,7 +14,7 @@ const config: AppConfig = {
   twelveDataApiKey: "test-key",
   symbols: ["EUR/USD"],
   interval: "5min",
-  scanIntervalMs: 300_000,
+  scanIntervalMs: 1_800_000,
   minRewardRisk: 2,
   swingLookback: 3,
   structureLookback: 2,
