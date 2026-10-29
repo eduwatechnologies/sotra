@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Redis } from "@upstash/redis";
 import type { Signal } from "./domain";
 import {
+  isSignal,
   type PersistedState,
   type StateRepository,
 } from "./state";
@@ -46,6 +47,18 @@ return 0
 
 const SCAN_LOCK_TTL_SECONDS = 300;
 const SIGNAL_CLAIM_TTL_SECONDS = 300;
+
+export function parseLatestSignal(value: unknown): Signal | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const signal = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!isSignal(signal)) {
+    throw new Error("Stored latest signal is malformed.");
+  }
+  return signal;
+}
 
 export class UpstashStateStore implements StateRepository {
   private readonly signalClaims = new Map<string, string>();
@@ -92,13 +105,13 @@ export class UpstashStateStore implements StateRepository {
   async get(): Promise<PersistedState> {
     const [paused, latestSignal, sentSignalKeys] = await Promise.all([
       this.redis.get<string>(this.key("paused")),
-      this.redis.get<string>(this.key("latest-signal")),
+      this.redis.get<unknown>(this.key("latest-signal")),
       this.redis.zrange<string[]>(this.key("sent-signals"), 0, -1),
     ]);
 
     return {
       paused: paused === "1",
-      latestSignal: latestSignal ? (JSON.parse(latestSignal) as Signal) : null,
+      latestSignal: parseLatestSignal(latestSignal),
       sentSignalKeys,
     };
   }

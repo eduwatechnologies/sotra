@@ -28,7 +28,7 @@ const DEFAULT_STATE: PersistedState = {
   latestSignal: null,
 };
 
-function isSignal(value: unknown): value is Signal {
+export function isSignal(value: unknown): value is Signal {
   if (value === null || typeof value !== "object") {
     return false;
   }
