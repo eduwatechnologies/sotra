@@ -10,6 +10,9 @@ export interface AppConfig {
   minRewardRisk: number;
   swingLookback: number;
   structureLookback: number;
+  maxBarsSinceSweep: number;
+  atrPeriod: number;
+  maxRiskAtrMultiple: number;
   maxCandleAgeMinutes: number;
   maxStoredSignalKeys: number;
   stateFile: string;
@@ -76,6 +79,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     minRewardRisk: positiveNumber(env, "MIN_REWARD_RISK", 3),
     swingLookback: positiveNumber(env, "SWING_LOOKBACK", 10, true),
     structureLookback: positiveNumber(env, "STRUCTURE_LOOKBACK", 5, true),
+    maxBarsSinceSweep: positiveNumber(env, "MAX_BARS_SINCE_SWEEP", 3, true),
+    atrPeriod: positiveNumber(env, "ATR_PERIOD", 14, true),
+    maxRiskAtrMultiple: positiveNumber(env, "MAX_RISK_ATR_MULTIPLE", 2),
     maxCandleAgeMinutes: positiveNumber(env, "MAX_CANDLE_AGE_MINUTES", 20),
     maxStoredSignalKeys: positiveNumber(env, "MAX_STORED_SIGNAL_KEYS", 1_000, true),
     stateFile: path.resolve(env.STATE_FILE?.trim() || path.join("data", "state.json")),

@@ -186,6 +186,9 @@ Manual scans while paused may analyze markets but must not publish scheduled sig
 | `MIN_REWARD_RISK` | Minimum planned reward-to-risk ratio | `3` |
 | `SWING_LOOKBACK` | Candles used to identify prior liquidity highs/lows | `10` |
 | `STRUCTURE_LOOKBACK` | Candles used to define structure levels | `5` |
+| `MAX_BARS_SINCE_SWEEP` | Maximum completed candles between a liquidity sweep and confirmation | `3` |
+| `ATR_PERIOD` | Candles used to calculate average true range | `14` |
+| `MAX_RISK_ATR_MULTIPLE` | Maximum stop distance as a multiple of ATR | `2` |
 | `MAX_CANDLE_AGE_MINUTES` | Maximum age of the latest usable candle | `20` |
 
 The provider's symbol support, timestamp format, candle finalization behavior, and subscription limits must be verified against its current documentation.

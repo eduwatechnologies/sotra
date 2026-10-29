@@ -63,6 +63,9 @@ The Vercel root URL serves a small informational page from `public/`; this proje
 | `MIN_REWARD_RISK` | `3` | Planned reward-to-risk target |
 | `SWING_LOOKBACK` | `10` | Prior candles used for the liquidity extreme |
 | `STRUCTURE_LOOKBACK` | `5` | Candles before a sweep used to establish structure |
+| `MAX_BARS_SINCE_SWEEP` | `3` | Maximum completed candles between a liquidity sweep and confirmation |
+| `ATR_PERIOD` | `14` | Candles used to calculate average true range |
+| `MAX_RISK_ATR_MULTIPLE` | `2` | Maximum stop distance as a multiple of ATR |
 | `MAX_CANDLE_AGE_MINUTES` | `20` | Maximum age allowed for the latest completed candle |
 | `MAX_STORED_SIGNAL_KEYS` | `1000` | Maximum retained delivery-deduplication keys |
 | `STATE_FILE` | `data/state.json` | Optional local state-file path |

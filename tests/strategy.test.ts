@@ -7,6 +7,9 @@ const config: StrategyConfig = {
   swingLookback: 3,
   structureLookback: 2,
   minRewardRisk: 3,
+  maxBarsSinceSweep: 3,
+  atrPeriod: 3,
+  maxRiskAtrMultiple: 2,
   maxCandleAgeMinutes: 20,
 };
 

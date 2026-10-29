@@ -16,6 +16,9 @@ test("loads documented defaults and trims configured symbols", () => {
   assert.equal(config.minRewardRisk, 3);
   assert.equal(config.swingLookback, 10);
   assert.equal(config.structureLookback, 5);
+  assert.equal(config.maxBarsSinceSweep, 3);
+  assert.equal(config.atrPeriod, 14);
+  assert.equal(config.maxRiskAtrMultiple, 2);
   assert.equal(config.maxCandleAgeMinutes, 20);
   assert.equal(config.stateBackend, "file");
 });
@@ -37,6 +40,18 @@ test("rejects malformed configuration values", () => {
   assert.throws(
     () => loadConfig({ ...required, SCAN_INTERVAL_MS: "0" }),
     /SCAN_INTERVAL_MS must be a positive integer/
+  );
+  assert.throws(
+    () => loadConfig({ ...required, MAX_BARS_SINCE_SWEEP: "1.5" }),
+    /MAX_BARS_SINCE_SWEEP must be a positive integer/
+  );
+  assert.throws(
+    () => loadConfig({ ...required, ATR_PERIOD: "0" }),
+    /ATR_PERIOD must be a positive integer/
+  );
+  assert.throws(
+    () => loadConfig({ ...required, MAX_RISK_ATR_MULTIPLE: "0" }),
+    /MAX_RISK_ATR_MULTIPLE must be a positive number/
   );
   assert.equal(loadConfig({ ...required, SCAN_INTERVAL_MS: "3600000" }).scanIntervalMs, 3_600_000);
   assert.throws(() => loadConfig({ ...required, TELEGRAM_CHAT_ID: "owner" }), /numeric Telegram chat ID/);
