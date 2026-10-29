@@ -13,7 +13,7 @@ test("loads documented defaults and trims configured symbols", () => {
   assert.deepEqual(config.symbols, ["EUR/USD", "GBP/USD"]);
   assert.equal(config.interval, "5min");
   assert.equal(config.scanIntervalMs, 1_800_000);
-  assert.equal(config.minRewardRisk, 2);
+  assert.equal(config.minRewardRisk, 3);
   assert.equal(config.swingLookback, 10);
   assert.equal(config.structureLookback, 5);
   assert.equal(config.maxCandleAgeMinutes, 20);

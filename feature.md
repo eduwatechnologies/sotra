@@ -183,7 +183,7 @@ Manual scans while paused may analyze markets but must not publish scheduled sig
 | `SYMBOLS` | Comma-separated market symbols | `XAU/USD,EUR/USD,GBP/USD` |
 | `INTERVAL` | Candle interval | `5min` |
 | `SCAN_INTERVAL_MS` | Scheduled scan frequency in milliseconds | `300000` |
-| `MIN_REWARD_RISK` | Minimum planned reward-to-risk ratio | `2` |
+| `MIN_REWARD_RISK` | Minimum planned reward-to-risk ratio | `3` |
 | `SWING_LOOKBACK` | Candles used to identify prior liquidity highs/lows | `10` |
 | `STRUCTURE_LOOKBACK` | Candles used to define structure levels | `5` |
 | `MAX_CANDLE_AGE_MINUTES` | Maximum age of the latest usable candle | `20` |
@@ -198,7 +198,7 @@ The provider's symbol support, timestamp format, candle finalization behavior, a
 - Spread, slippage, commissions, swaps, and broker-specific contract/tick specifications can materially change trade outcomes.
 - No position sizing is provided in the initial release.
 - No news or session filter is included in the initial release.
-- A planned 2:1 reward-to-risk ratio is not the same as an achieved 2:1 result.
+- A planned 3:1 reward-to-risk ratio is not the same as an achieved 3:1 result.
 - Do not advertise a win rate until supported by reproducible, out-of-sample testing and transparent performance reporting.
 - Backtests must avoid look-ahead bias and account for spread, slippage, commissions, and ambiguous candles that touch both stop and target.
 - Paper trade before considering live use.

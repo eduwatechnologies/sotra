@@ -73,7 +73,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     symbols: [...new Set(symbols)],
     interval,
     scanIntervalMs: positiveNumber(env, "SCAN_INTERVAL_MS", 1_800_000, true),
-    minRewardRisk: positiveNumber(env, "MIN_REWARD_RISK", 2),
+    minRewardRisk: positiveNumber(env, "MIN_REWARD_RISK", 3),
     swingLookback: positiveNumber(env, "SWING_LOOKBACK", 10, true),
     structureLookback: positiveNumber(env, "STRUCTURE_LOOKBACK", 5, true),
     maxCandleAgeMinutes: positiveNumber(env, "MAX_CANDLE_AGE_MINUTES", 20),

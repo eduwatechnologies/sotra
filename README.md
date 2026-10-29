@@ -60,7 +60,7 @@ The Vercel root URL serves a small informational page from `public/`; this proje
 | `SYMBOLS` | `XAU/USD,EUR/USD,GBP/USD` | Comma-separated Twelve Data symbols |
 | `INTERVAL` | `5min` | Candle interval for local scans and `/scan` |
 | `SCAN_INTERVAL_MS` | `1800000` | Delay between scheduled scans in local polling mode (30 minutes by default); configure the Vercel signal cron to the same cadence |
-| `MIN_REWARD_RISK` | `2` | Planned reward-to-risk target |
+| `MIN_REWARD_RISK` | `3` | Planned reward-to-risk target |
 | `SWING_LOOKBACK` | `10` | Prior candles used for the liquidity extreme |
 | `STRUCTURE_LOOKBACK` | `5` | Candles before a sweep used to establish structure |
 | `MAX_CANDLE_AGE_MINUTES` | `20` | Maximum age allowed for the latest completed candle |

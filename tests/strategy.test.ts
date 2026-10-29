@@ -6,7 +6,7 @@ import type { Candle } from "../src/models/domain";
 const config: StrategyConfig = {
   swingLookback: 3,
   structureLookback: 2,
-  minRewardRisk: 2,
+  minRewardRisk: 3,
   maxCandleAgeMinutes: 20,
 };
 
@@ -54,15 +54,15 @@ test("detects correctly placed bullish and bearish signals", () => {
   assert.equal(bullish?.direction, "BUY");
   assert.equal(bullish?.entry, 102);
   assert.equal(bullish?.stopLoss, 98);
-  assert.equal(bullish?.takeProfit, 110);
-  assert.equal(bullish?.rewardRisk, 2);
+  assert.equal(bullish?.takeProfit, 114);
+  assert.equal(bullish?.rewardRisk, 3);
 
   const bearishCandles = fixture("SELL");
   const bearish = analyzeCandles(bearishCandles, "EUR/USD", config, now);
   assert.equal(bearish?.direction, "SELL");
   assert.equal(bearish?.entry, 98);
   assert.equal(bearish?.stopLoss, 102);
-  assert.equal(bearish?.takeProfit, 90);
+  assert.equal(bearish?.takeProfit, 86);
 });
 
 test("requires structure confirmation on the latest completed candle and is order independent", () => {
