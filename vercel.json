@@ -9,6 +9,15 @@
     },
     "api/signal-cron.ts": {
       "maxDuration": 60
+    },
+    "api/dashboard/status.ts": {
+      "maxDuration": 15
+    },
+    "api/dashboard/pause.ts": {
+      "maxDuration": 15
+    },
+    "api/dashboard/scan.ts": {
+      "maxDuration": 60
     }
   }
 }

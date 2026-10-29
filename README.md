@@ -21,7 +21,7 @@ The local state file defaults to `data/state.json`; it is created automatically 
 
 The long-polling `npm run dev` process is for local development. Vercel uses serverless functions, so the deployed bot receives Telegram updates through a webhook and stores state in Upstash Redis.
 
-1. Create a Vercel project from this repository and connect an Upstash Redis database. Add these environment variables to Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TWELVE_DATA_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `CRON_SECRET`. Generate separate random values for the two secrets; the Telegram webhook secret must use only letters, numbers, `_`, or `-`.
+1. Create a Vercel project from this repository and connect an Upstash Redis database. Add these environment variables to Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TWELVE_DATA_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `CRON_SECRET`. Generate separate random values for each secret; the Telegram webhook secret must use only letters, numbers, `_`, or `-`.
 2. Deploy the project.
 3. Configure the Telegram webhook with `npm run webhook:set -- https://your-project.vercel.app`. Provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in the shell or a local, uncommitted `.env` file.
 4. In cron-job.org, create two `GET` jobs:
@@ -40,7 +40,9 @@ The long-polling `npm run dev` process is for local development. Vercel uses ser
 
 At 09:00 Africa/Lagos, `/api/cron` sends a Telegram report for every configured symbol. It assesses 4H swing bias, 1H swing-trendline alignment and market-structure shift, an approximate 1H last-opposing-candle zone, and an aligned 5M liquidity-sweep/structure-confirmation setup. This report is not generated if scheduled alerts are paused. `401` means the request is missing the correct Bearer secret; confirm the production `CRON_SECRET` in Vercel and the cron-job.org `Authorization` header both match exactly. A `GET` from a browser without the header should return `401` by design. `409` means another scan/report is active. The endpoint returns `200` after successfully sending the report, including when some symbols could not be fetched.
 
-The Vercel root URL serves a small informational page from `public/`; this project has no web dashboard. Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; configure the cron-job.org signal job to the same cadence for Vercel. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
+The Vercel root URL serves the informational page from `public/`. The Next.js dashboard is a separate project in `../sotra_dashboard/`; deploy it as its own Vercel project and enable Vercel Deployment Protection for the dashboard deployment. Set `DASHBOARD_API_SECRET` on the bot project and the same value as `SOTRA_DASHBOARD_API_SECRET` on the dashboard project. Generate this as a separate random secret; do not reuse `CRON_SECRET` or `TELEGRAM_WEBHOOK_SECRET`. Set `SOTRA_API_URL` on the dashboard project to the bot deployment origin (for example, `https://your-sotra-bot.vercel.app`, with no API path). The dashboard server proxies requests to dedicated `/api/dashboard/*` bot endpoints; the shared secret stays server-side and is never sent to the browser. The status endpoint returns configured markets, settings, pause state, and the latest signal. The pause and manual-scan endpoints reuse the existing state repository and scanner; a manual scan sends Telegram alerts only when scheduled alerts are active. Dashboard API requests are not cron requests and do not use `CRON_SECRET`.
+
+Vercel functions do not use local JSON state. Pause state, latest signal, deduplication keys, and cross-invocation scan locks are stored in Upstash. Preview and production deployments use separate key prefixes by default; `UPSTASH_STATE_PREFIX` can override the prefix. Vercel deployments enforce `STATE_BACKEND=upstash`; local development uses `data/state.json` unless `STATE_BACKEND=upstash` is set. `SCAN_INTERVAL_MS` applies to local polling mode; configure the cron-job.org signal job to the same cadence for Vercel. Do not run local long polling with the production bot token while the webhook is active; Telegram only allows one update-delivery mode for a bot at a time.
 
 ## MVC structure
 
@@ -70,6 +72,7 @@ The Vercel root URL serves a small informational page from `public/`; this proje
 | `MAX_STORED_SIGNAL_KEYS` | `1000` | Maximum retained delivery-deduplication keys |
 | `STATE_FILE` | `data/state.json` | Optional local state-file path |
 | `CRON_SECRET` | Required on Vercel | Shared secret for cron-job.org requests to `/api/cron` and `/api/signal-cron` |
+| `DASHBOARD_API_SECRET` | Required for dashboard | Separate bearer secret authorizing the dashboard server to call `/api/dashboard/*` |
 
 ## Commands
 
