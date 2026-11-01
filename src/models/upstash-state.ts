@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { Redis } from "@upstash/redis";
 import type { Signal } from "./domain";
 import {
+  isDashboardSettings,
+  type DashboardSettings,
+} from "../dashboard-settings";
+import {
+  isStrategyProfileList,
+  type StrategyProfile,
+} from "../strategy-profiles";
+import {
   isSignal,
   type PersistedState,
   type StateRepository,
@@ -60,6 +68,47 @@ export function parseLatestSignal(value: unknown): Signal | null {
   return signal;
 }
 
+function parseDashboardSettings(value: unknown): DashboardSettings | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const settings = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!isDashboardSettings(settings)) {
+    throw new Error("Stored dashboard settings are malformed.");
+  }
+  return settings;
+}
+
+interface StoredStrategyProfiles {
+  profiles: StrategyProfile[];
+  activeProfileId: string | null;
+}
+
+function parseStrategyProfiles(value: unknown): StoredStrategyProfiles {
+  if (value === null || value === undefined) {
+    return { profiles: [], activeProfileId: null };
+  }
+  const stored = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (stored === null || typeof stored !== "object") {
+    throw new Error("Stored strategy profiles are malformed.");
+  }
+  const data = stored as Record<string, unknown>;
+  if (
+    !isStrategyProfileList(data.profiles) ||
+    !(
+      data.activeProfileId === null ||
+      (typeof data.activeProfileId === "string" &&
+        data.profiles.some(({ id }) => id === data.activeProfileId))
+    )
+  ) {
+    throw new Error("Stored strategy profiles are malformed.");
+  }
+  return {
+    profiles: data.profiles.map((profile) => ({ ...profile })),
+    activeProfileId: data.activeProfileId,
+  };
+}
+
 export class UpstashStateStore implements StateRepository {
   private readonly signalClaims = new Map<string, string>();
   private readonly claimSignalScript;
@@ -103,16 +152,22 @@ export class UpstashStateStore implements StateRepository {
   }
 
   async get(): Promise<PersistedState> {
-    const [paused, latestSignal, sentSignalKeys] = await Promise.all([
+    const [paused, latestSignal, sentSignalKeys, dashboardSettings, strategies] = await Promise.all([
       this.redis.get<string>(this.key("paused")),
       this.redis.get<unknown>(this.key("latest-signal")),
       this.redis.zrange<string[]>(this.key("sent-signals"), 0, -1),
+      this.redis.get<unknown>(this.key("dashboard-settings")),
+      this.redis.get<unknown>(this.key("strategy-profiles")),
     ]);
 
+    const strategyConfiguration = parseStrategyProfiles(strategies);
     return {
       paused: paused === "1",
       latestSignal: parseLatestSignal(latestSignal),
       sentSignalKeys,
+      dashboardSettings: parseDashboardSettings(dashboardSettings),
+      strategyProfiles: strategyConfiguration.profiles,
+      activeStrategyProfileId: strategyConfiguration.activeProfileId,
     };
   }
 
@@ -144,6 +199,33 @@ export class UpstashStateStore implements StateRepository {
 
   async setPaused(paused: boolean): Promise<void> {
     await this.redis.set(this.key("paused"), paused ? "1" : "0");
+  }
+
+  async setDashboardSettings(settings: DashboardSettings | null): Promise<void> {
+    if (settings !== null && !isDashboardSettings(settings)) {
+      throw new Error("Dashboard settings are invalid.");
+    }
+    if (settings === null) {
+      await this.redis.del(this.key("dashboard-settings"));
+      return;
+    }
+    await this.redis.set(this.key("dashboard-settings"), JSON.stringify(settings));
+  }
+
+  async setStrategyProfiles(
+    profiles: StrategyProfile[],
+    activeProfileId: string | null
+  ): Promise<void> {
+    if (
+      !isStrategyProfileList(profiles) ||
+      (activeProfileId !== null && !profiles.some(({ id }) => id === activeProfileId))
+    ) {
+      throw new Error("Strategy profiles or active profile are invalid.");
+    }
+    await this.redis.set(
+      this.key("strategy-profiles"),
+      JSON.stringify({ profiles, activeProfileId })
+    );
   }
 
   async recordLatestSignal(signal: Signal): Promise<void> {

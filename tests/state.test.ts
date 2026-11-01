@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -24,6 +24,28 @@ test("persists pause state, latest signal, and bounded deduplication keys", asyn
     const state = new StateStore(file, 2);
     await state.load();
     await state.setPaused(true);
+    await state.setDashboardSettings({
+      symbols: ["EUR/USD"],
+      interval: "15min",
+      scanIntervalMs: 600_000,
+      minRewardRisk: 2.5,
+    });
+    await state.setStrategyProfiles(
+      [
+        {
+          id: "conservative",
+          name: "Conservative",
+          minRewardRisk: 3,
+          swingLookback: 12,
+          structureLookback: 6,
+          maxBarsSinceSweep: 2,
+          atrPeriod: 14,
+          maxRiskAtrMultiple: 1.5,
+          maxCandleAgeMinutes: 15,
+        },
+      ],
+      "conservative"
+    );
     await state.recordLatestSignal(signal);
     await state.recordSentSignal(signalKey(signal));
     await state.recordSentSignal("second");
@@ -32,10 +54,48 @@ test("persists pause state, latest signal, and bounded deduplication keys", asyn
     const restarted = new StateStore(file, 2);
     const loaded = await restarted.load();
     assert.equal(loaded.paused, true);
+    assert.deepEqual(loaded.dashboardSettings, {
+      symbols: ["EUR/USD"],
+      interval: "15min",
+      scanIntervalMs: 600_000,
+      minRewardRisk: 2.5,
+    });
+    assert.equal(loaded.activeStrategyProfileId, "conservative");
+    assert.equal(loaded.strategyProfiles[0].name, "Conservative");
     assert.deepEqual(loaded.latestSignal, signal);
     assert.equal(loaded.sentSignalKeys.length, 2);
     assert.equal(await restarted.hasSent(signalKey(signal)), false);
     assert.equal(JSON.parse(await readFile(file, "utf8")).paused, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("validates strategy profiles before persisting them", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-state-"));
+  try {
+    const state = new StateStore(path.join(directory, "state.json"), 10);
+    await state.load();
+    await assert.rejects(
+      state.setStrategyProfiles(
+        [
+          {
+            id: "invalid",
+            name: "Invalid",
+            minRewardRisk: 3,
+            swingLookback: 10,
+            structureLookback: 5,
+            maxBarsSinceSweep: 3,
+            atrPeriod: 14,
+            maxRiskAtrMultiple: 2,
+            maxCandleAgeMinutes: 20,
+          },
+        ],
+        "missing"
+      ),
+      /invalid/
+    );
+    assert.deepEqual((await state.get()).strategyProfiles, []);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -90,6 +150,22 @@ test("fails explicitly for malformed persisted state", async () => {
     const { writeFile } = await import("node:fs/promises");
     await writeFile(file, "{broken");
     await assert.rejects(new StateStore(file, 10).load());
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("loads state files created before dashboard settings were added", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-state-"));
+  const file = path.join(directory, "state.json");
+  try {
+    await writeFile(
+      file,
+      JSON.stringify({ paused: false, sentSignalKeys: [], latestSignal: null })
+    );
+    const state = new StateStore(file, 10);
+    const loaded = await state.load();
+    assert.equal(loaded.dashboardSettings, null);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

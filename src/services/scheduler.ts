@@ -22,6 +22,13 @@ export class ScanScheduler {
     void this.runAndScheduleNext();
   }
 
+  setIntervalMs(intervalMs: number): void {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      throw new Error("Scheduler interval must be a positive number.");
+    }
+    this.options.intervalMs = intervalMs;
+  }
+
   stop(): void {
     this.stopped = true;
     if (this.timer) {

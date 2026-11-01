@@ -35,6 +35,25 @@ test("waits for each scheduled run to finish before starting the next", async ()
   assert.equal(maximumConcurrentRuns, 1);
 });
 
+test("uses a dashboard-updated interval for the next scheduler wait", async () => {
+  let runCount = 0;
+  let scheduler!: ScanScheduler;
+  scheduler = new ScanScheduler({
+    intervalMs: 10,
+    run: async () => {
+      runCount += 1;
+      scheduler.setIntervalMs(1_000);
+    },
+    onError: (error) => assert.fail(String(error)),
+  });
+
+  scheduler.start();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  scheduler.stop();
+
+  assert.equal(runCount, 1);
+});
+
 test("stops scheduling after a failed run and reports the error", async () => {
   let reportedError: unknown;
   let runCount = 0;

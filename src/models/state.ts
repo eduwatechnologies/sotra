@@ -2,11 +2,22 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Signal } from "./domain";
+import {
+  isDashboardSettings,
+  type DashboardSettings,
+} from "../dashboard-settings";
+import {
+  isStrategyProfileList,
+  type StrategyProfile,
+} from "../strategy-profiles";
 
 export interface PersistedState {
   paused: boolean;
   sentSignalKeys: string[];
   latestSignal: Signal | null;
+  dashboardSettings: DashboardSettings | null;
+  strategyProfiles: StrategyProfile[];
+  activeStrategyProfileId: string | null;
 }
 
 export interface StateRepository {
@@ -16,6 +27,11 @@ export interface StateRepository {
   claimSignal(key: string): Promise<boolean>;
   releaseSignal(key: string): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
+  setDashboardSettings(settings: DashboardSettings | null): Promise<void>;
+  setStrategyProfiles(
+    profiles: StrategyProfile[],
+    activeProfileId: string | null
+  ): Promise<void>;
   recordLatestSignal(signal: Signal): Promise<void>;
   recordSentSignal(key: string): Promise<void>;
   acquireScanLock(): Promise<boolean>;
@@ -26,6 +42,9 @@ const DEFAULT_STATE: PersistedState = {
   paused: false,
   sentSignalKeys: [],
   latestSignal: null,
+  dashboardSettings: null,
+  strategyProfiles: [],
+  activeStrategyProfileId: null,
 };
 
 export function isSignal(value: unknown): value is Signal {
@@ -52,7 +71,27 @@ function parseState(value: unknown): PersistedState {
     typeof data.paused !== "boolean" ||
     !Array.isArray(data.sentSignalKeys) ||
     !data.sentSignalKeys.every((key) => typeof key === "string") ||
-    !(data.latestSignal === null || isSignal(data.latestSignal))
+    !(data.latestSignal === null || isSignal(data.latestSignal)) ||
+    !(
+      data.dashboardSettings === undefined ||
+      data.dashboardSettings === null ||
+      isDashboardSettings(data.dashboardSettings)
+    ) ||
+    !(
+      data.strategyProfiles === undefined ||
+      isStrategyProfileList(data.strategyProfiles)
+    ) ||
+    !(
+      data.activeStrategyProfileId === undefined ||
+      data.activeStrategyProfileId === null ||
+      (typeof data.activeStrategyProfileId === "string" &&
+        Array.isArray(data.strategyProfiles) &&
+        data.strategyProfiles.some(
+          (profile) =>
+            isStrategyProfileList(data.strategyProfiles) &&
+            profile.id === data.activeStrategyProfileId
+        ))
+    )
   ) {
     throw new Error("State file is malformed.");
   }
@@ -60,6 +99,16 @@ function parseState(value: unknown): PersistedState {
     paused: data.paused,
     sentSignalKeys: [...data.sentSignalKeys],
     latestSignal: data.latestSignal,
+    dashboardSettings: isDashboardSettings(data.dashboardSettings)
+      ? { ...data.dashboardSettings, symbols: [...data.dashboardSettings.symbols] }
+      : null,
+    strategyProfiles: isStrategyProfileList(data.strategyProfiles)
+      ? data.strategyProfiles.map((profile) => ({ ...profile }))
+      : [],
+    activeStrategyProfileId:
+      typeof data.activeStrategyProfileId === "string"
+        ? data.activeStrategyProfileId
+        : null,
   };
 }
 
@@ -101,6 +150,14 @@ export class StateStore {
       paused: this.data.paused,
       sentSignalKeys: [...this.data.sentSignalKeys],
       latestSignal: this.data.latestSignal ? { ...this.data.latestSignal } : null,
+      dashboardSettings: this.data.dashboardSettings
+        ? {
+            ...this.data.dashboardSettings,
+            symbols: [...this.data.dashboardSettings.symbols],
+          }
+        : null,
+      strategyProfiles: this.data.strategyProfiles.map((profile) => ({ ...profile })),
+      activeStrategyProfileId: this.data.activeStrategyProfileId,
     };
   }
 
@@ -122,6 +179,35 @@ export class StateStore {
 
   async setPaused(paused: boolean): Promise<void> {
     await this.update((current) => ({ ...current, paused }));
+  }
+
+  async setDashboardSettings(settings: DashboardSettings | null): Promise<void> {
+    if (settings !== null && !isDashboardSettings(settings)) {
+      throw new Error("Dashboard settings are invalid.");
+    }
+    await this.update((current) => ({
+      ...current,
+      dashboardSettings: settings
+        ? { ...settings, symbols: [...settings.symbols] }
+        : null,
+    }));
+  }
+
+  async setStrategyProfiles(
+    profiles: StrategyProfile[],
+    activeProfileId: string | null
+  ): Promise<void> {
+    if (
+      !isStrategyProfileList(profiles) ||
+      (activeProfileId !== null && !profiles.some(({ id }) => id === activeProfileId))
+    ) {
+      throw new Error("Strategy profiles or active profile are invalid.");
+    }
+    await this.update((current) => ({
+      ...current,
+      strategyProfiles: profiles.map((profile) => ({ ...profile })),
+      activeStrategyProfileId: activeProfileId,
+    }));
   }
 
   async recordLatestSignal(signal: Signal): Promise<void> {

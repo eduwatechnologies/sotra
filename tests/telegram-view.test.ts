@@ -33,7 +33,10 @@ test("formats status, watchlist, and welcome screens from application data", () 
   assert.match(formatStatus(config, true), /Alerts: paused/);
   assert.match(formatStatus(config, false), /EUR\/USD, XAU\/USD/);
   assert.match(formatStatus({ ...config, stateBackend: "upstash" }, false), /cron-job\.org/);
-  assert.match(formatStatus({ ...config, stateBackend: "upstash" }, false), /signals every 30 minute\(s\)/);
+  assert.match(
+    formatStatus({ ...config, stateBackend: "upstash" }, false),
+    /target cadence 30 minute\(s\)/
+  );
   assert.equal(formatMarkets(config.symbols), "Configured markets:\n• EUR/USD\n• XAU/USD");
   assert.match(formatWelcome(), /\/scan — scan now/);
 });

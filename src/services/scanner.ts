@@ -3,6 +3,7 @@ import { fetchCandles } from "./market-data";
 import { analyzeCandles } from "./strategy";
 import { signalKey, type StateRepository } from "../models/state";
 import type { Signal } from "../models/domain";
+import { applyStrategyProfile } from "../strategy-profiles";
 
 export interface ScanResult {
   symbol: string;
@@ -44,8 +45,18 @@ export class SignalScanner {
     console.info(`Market scan started (${options.scheduled ? "scheduled" : "manual"}).`);
 
     try {
+      const state = await this.state.get();
+      const baseConfig = {
+        ...this.config,
+        ...(state.dashboardSettings ?? {}),
+      };
+      const config = applyStrategyProfile(
+        baseConfig,
+        state.strategyProfiles,
+        state.activeStrategyProfileId
+      );
       const results: ScanResult[] = [];
-      for (const symbol of this.config.symbols) {
+      for (const symbol of config.symbols) {
         if (options.scheduled && (await this.state.get()).paused) {
           results.push({ symbol, status: "paused" });
           continue;
@@ -53,17 +64,17 @@ export class SignalScanner {
         try {
           const candles = await this.dependencies.fetchCandles(
             symbol,
-            this.config.interval,
-            this.config.twelveDataApiKey
+            config.interval,
+            config.twelveDataApiKey
           );
-          const signal = analyzeCandles(candles, symbol, this.config, this.dependencies.now?.());
+          const signal = analyzeCandles(candles, symbol, config, this.dependencies.now?.());
           if (!signal) {
             const latestCompleted = candles.length > 1 ? candles[candles.length - 2] : undefined;
             if (
               latestCompleted &&
               (latestCompleted.timestamp > (this.dependencies.now?.() ?? Date.now()) ||
                 (this.dependencies.now?.() ?? Date.now()) - latestCompleted.timestamp >
-                  this.config.maxCandleAgeMinutes * 60_000)
+                  config.maxCandleAgeMinutes * 60_000)
             ) {
               console.warn(`Skipping stale or future candle data for ${symbol}.`);
             }

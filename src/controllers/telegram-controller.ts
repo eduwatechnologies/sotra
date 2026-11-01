@@ -1,5 +1,7 @@
 import type { Telegraf } from "telegraf";
 import type { AppConfig } from "../config";
+import { applyDashboardSettings } from "../dashboard-settings";
+import { applyStrategyProfile } from "../strategy-profiles";
 import { safeErrorText } from "../logging";
 import type { SignalScanner } from "../services/scanner";
 import type { StateRepository } from "../models/state";
@@ -31,11 +33,27 @@ export function registerTelegramController(
   });
 
   bot.command("status", async (ctx) => {
-    await ctx.reply(formatStatus(config, (await state.get()).paused));
+    const currentState = await state.get();
+    const effectiveConfig = applyStrategyProfile(
+      applyDashboardSettings(config, currentState.dashboardSettings),
+      currentState.strategyProfiles,
+      currentState.activeStrategyProfileId
+    );
+    const activeProfile = currentState.strategyProfiles.find(
+      ({ id }) => id === currentState.activeStrategyProfileId
+    );
+    await ctx.reply(
+      formatStatus(effectiveConfig, currentState.paused, activeProfile?.name)
+    );
   });
 
   bot.command("markets", async (ctx) => {
-    await ctx.reply(formatMarkets(config.symbols));
+    const currentState = await state.get();
+    await ctx.reply(
+      formatMarkets(
+        applyDashboardSettings(config, currentState.dashboardSettings).symbols
+      )
+    );
   });
 
   bot.command("scan", async (ctx) => {

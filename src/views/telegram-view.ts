@@ -62,7 +62,8 @@ export function formatWelcome(): string {
 
 export function formatStatus(
   config: AppConfig,
-  paused: boolean
+  paused: boolean,
+  activeStrategyName?: string
 ): string {
   return (
     `Sotra Signals is online.\n` +
@@ -71,10 +72,11 @@ export function formatStatus(
     `Interval: ${config.interval}\n` +
     `Scan schedule: ${
       config.stateBackend === "upstash"
-        ? `signals every ${Math.round(config.scanIntervalMs / 60_000)} minute(s) via cron-job.org; morning report daily at 09:00 Africa/Lagos`
-        : `${Math.round(config.scanIntervalMs / 60_000)} minute(s)`
+        ? `target cadence ${Math.round(config.scanIntervalMs / 60_000)} minute(s); configure cron-job.org separately; morning report daily at 09:00 Africa/Lagos`
+        : `${Math.round(config.scanIntervalMs / 60_000)} minute(s) between scans`
     }\n` +
-    `Minimum planned R:R: ${config.minRewardRisk}:1`
+    `Minimum planned R:R: ${config.minRewardRisk}:1` +
+    (activeStrategyName ? `\nStrategy profile: ${activeStrategyName}` : "")
   );
 }
 

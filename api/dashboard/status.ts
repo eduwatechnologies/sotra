@@ -1,5 +1,7 @@
 import { safeErrorText } from "../../src/logging";
 import type { FunctionRequest, FunctionResponse } from "../../src/platform/vercel-http-types";
+import { applyDashboardSettings } from "../../src/dashboard-settings";
+import { applyStrategyProfile } from "../../src/strategy-profiles";
 import { getVercelRuntime } from "../../src/vercel-runtime";
 import { isAuthorizedDashboardRequest } from "../dashboard-auth";
 
@@ -21,12 +23,17 @@ export default async function dashboardStatus(
   try {
     const runtime = await getVercelRuntime();
     const state = await runtime.state.get();
+    const config = applyStrategyProfile(
+      applyDashboardSettings(runtime.config, state.dashboardSettings),
+      state.strategyProfiles,
+      state.activeStrategyProfileId
+    );
     response.status(200).json({
       paused: state.paused,
-      symbols: runtime.config.symbols,
-      interval: runtime.config.interval,
-      scanIntervalMs: runtime.config.scanIntervalMs,
-      minRewardRisk: runtime.config.minRewardRisk,
+      symbols: config.symbols,
+      interval: config.interval,
+      scanIntervalMs: config.scanIntervalMs,
+      minRewardRisk: config.minRewardRisk,
       latestSignal: state.latestSignal,
     });
   } catch (error) {

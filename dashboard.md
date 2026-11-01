@@ -4,7 +4,7 @@
 
 Build a private web dashboard for the existing single-owner Sotra Signals service. The UI is a separate Next.js project in `../sotra_dashboard/`; the Sotra bot remains the source of truth for configuration, state, and scanning. This does not change the Telegram workflow or authorize trading actions.
 
-The selected first connection includes live status/latest signal plus pause/resume and manual scan controls. Authentication is through Vercel Deployment Protection for the dashboard and a separate shared server-to-server `DASHBOARD_API_SECRET` for dashboard API calls.
+The connected dashboard includes live status/latest signal, pause/resume and manual scan controls, editable markets/candle interval/scan cadence, and named parameter profiles for the existing strategy. The bot persists overrides in its shared state; activating a profile applies it to future scans, while the default profile uses environment-configured strategy parameters. The strategy page compares configuration only and does not claim backtest or live performance. Authentication is through Vercel Deployment Protection for the dashboard and a separate shared server-to-server `DASHBOARD_API_SECRET` for dashboard API calls.
 
 ## Goals
 
@@ -33,6 +33,8 @@ The selected first connection includes live status/latest signal plus pause/resu
 ### Owner controls
 
 - Pause and resume scheduled alerts.
+- Update validated scan settings and restore environment-configured defaults.
+- Create, activate, compare, and remove named profiles for the supported liquidity-sweep strategy parameters.
 - Request a manual scan and show per-symbol results, including errors and whether alerts were delivered.
 - Require confirmation for state-changing controls and reflect the persisted result in the UI.
 - Explain that scanning and alerting are analysis-only and do not place trades.
@@ -44,7 +46,7 @@ The current state repository retains only the latest signal and sent-signal dedu
 ## Proposed Architecture
 
 - Deploy the Next.js dashboard as a separate Vercel project and protect its production and preview deployments with Vercel Deployment Protection.
-- Add dedicated authenticated dashboard API routes to the existing Sotra Vercel deployment for reading status/latest signal, changing pause state, and requesting a scan.
+- Add dedicated authenticated dashboard API routes to the existing Sotra Vercel deployment for reading status/latest signal, changing pause state and settings, and requesting a scan.
 - Use same-origin Next.js route handlers as a server-side proxy; keep the dashboard API secret out of browser code.
 - Reuse `ApplicationRuntime`, `StateRepository`, and `SignalScanner`; do not duplicate strategy or state logic in the browser.
 - Return stable, minimal JSON response shapes and explicit HTTP errors. Do not expose environment variables, provider credentials, raw exceptions, or internal state keys.
@@ -84,6 +86,7 @@ The current state repository retains only the latest signal and sent-signal dedu
 - Unauthenticated visitors cannot read dashboard data or invoke dashboard actions.
 - Authorized owner can view alert state, configured markets, strategy settings, and the latest signal.
 - Pause/resume changes are persisted through the shared state repository and remain consistent with Telegram commands and scheduled jobs.
+- Valid dashboard settings are persisted and used by future scans; the external Vercel cron-job.org cadence remains separately configured.
 - A manual scan uses the existing scanner, respects the shared scan lock and pause state, and reports per-symbol outcomes without leaking internal errors.
 - The UI works on mobile and desktop and clearly distinguishes empty, stale/unavailable, loading, and error states.
 - No order execution, public account flow, or unsupported performance claims are introduced.

@@ -8,6 +8,8 @@ import test from "node:test";
 import dashboardScan from "../api/dashboard/scan";
 import dashboardStatus from "../api/dashboard/status";
 import updateDashboardPause from "../api/dashboard/pause";
+import updateDashboardSettings from "../api/dashboard/settings";
+import dashboardStrategies from "../api/dashboard/strategies";
 import { isAuthorizedDashboardRequest } from "../api/dashboard-auth";
 import type { FunctionResponse } from "../src/platform/vercel-http-types";
 
@@ -65,6 +67,16 @@ test("manual dashboard scans reject unauthorized requests before runtime initial
   assert.deepEqual(response.jsonBody, { error: "Unauthorized" });
 });
 
+test("strategy profile API requires the dashboard bearer secret", async () => {
+  const wrongMethod = new MockResponse();
+  await dashboardStrategies(request("PUT"), wrongMethod as FunctionResponse);
+  assert.equal(wrongMethod.statusCode, 405);
+
+  const unauthorized = new MockResponse();
+  await dashboardStrategies(request("GET"), unauthorized as FunctionResponse);
+  assert.equal(unauthorized.statusCode, 401);
+});
+
 test("authorized dashboard requests read and update the shared bot state", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-dashboard-api-"));
   const environment = [
@@ -101,6 +113,128 @@ test("authorized dashboard requests read and update the shared bot state", async
     );
     assert.equal(status.statusCode, 200);
     assert.deepEqual(status.jsonBody, {
+      paused: false,
+      symbols: ["XAU/USD", "EUR/USD", "GBP/USD"],
+      interval: "5min",
+      scanIntervalMs: 1_800_000,
+      minRewardRisk: 3,
+      latestSignal: null,
+    });
+
+    const settings = new MockResponse();
+    await updateDashboardSettings(
+      request("POST", "test-dashboard-key", {
+        settings: {
+          symbols: ["GBP/USD"],
+          interval: "15min",
+          scanIntervalMs: 600_000,
+          minRewardRisk: 2.5,
+        },
+      }),
+      settings as FunctionResponse
+    );
+    assert.equal(settings.statusCode, 200);
+
+    const settingsStatus = new MockResponse();
+    await dashboardStatus(
+      request("GET", "test-dashboard-key"),
+      settingsStatus as FunctionResponse
+    );
+    assert.deepEqual(settingsStatus.jsonBody, {
+      paused: false,
+      symbols: ["GBP/USD"],
+      interval: "15min",
+      scanIntervalMs: 600_000,
+      minRewardRisk: 2.5,
+      latestSignal: null,
+    });
+
+    const strategyCreate = new MockResponse();
+    await dashboardStrategies(
+      request("POST", "test-dashboard-key", {
+        action: "create",
+        name: "Wide structure",
+        parameters: {
+          minRewardRisk: 4,
+          swingLookback: 12,
+          structureLookback: 6,
+          maxBarsSinceSweep: 2,
+          atrPeriod: 14,
+          maxRiskAtrMultiple: 1.5,
+          maxCandleAgeMinutes: 15,
+        },
+      }),
+      strategyCreate as FunctionResponse
+    );
+    assert.equal(strategyCreate.statusCode, 200);
+    const created = strategyCreate.jsonBody as {
+      profiles: Array<{ id: string; name: string }>;
+      activeProfileId: string | null;
+    };
+    assert.equal(created.profiles[0].name, "Wide structure");
+    assert.equal(created.activeProfileId, null);
+
+    const activateStrategy = new MockResponse();
+    await dashboardStrategies(
+      request("POST", "test-dashboard-key", {
+        action: "activate",
+        profileId: created.profiles[0].id,
+      }),
+      activateStrategy as FunctionResponse
+    );
+    assert.equal(activateStrategy.statusCode, 200);
+    assert.equal(
+      (activateStrategy.jsonBody as typeof created).activeProfileId,
+      created.profiles[0].id
+    );
+
+    const activeDelete = new MockResponse();
+    await dashboardStrategies(
+      request("POST", "test-dashboard-key", {
+        action: "delete",
+        profileId: created.profiles[0].id,
+      }),
+      activeDelete as FunctionResponse
+    );
+    assert.equal(activeDelete.statusCode, 409);
+
+    const activeStatus = new MockResponse();
+    await dashboardStatus(
+      request("GET", "test-dashboard-key"),
+      activeStatus as FunctionResponse
+    );
+    assert.equal(
+      (activeStatus.jsonBody as { minRewardRisk: number }).minRewardRisk,
+      4
+    );
+
+    const activateDefault = new MockResponse();
+    await dashboardStrategies(
+      request("POST", "test-dashboard-key", {
+        action: "activate",
+        profileId: null,
+      }),
+      activateDefault as FunctionResponse
+    );
+    assert.equal(activateDefault.statusCode, 200);
+
+    const deleteStrategy = new MockResponse();
+    await dashboardStrategies(
+      request("POST", "test-dashboard-key", {
+        action: "delete",
+        profileId: created.profiles[0].id,
+      }),
+      deleteStrategy as FunctionResponse
+    );
+    assert.equal(deleteStrategy.statusCode, 200);
+
+    const resetSettings = new MockResponse();
+    await updateDashboardSettings(
+      request("POST", "test-dashboard-key", { settings: null }),
+      resetSettings as FunctionResponse
+    );
+    assert.equal(resetSettings.statusCode, 200);
+    assert.deepEqual(resetSettings.jsonBody, {
       paused: false,
       symbols: ["XAU/USD", "EUR/USD", "GBP/USD"],
       interval: "5min",
@@ -163,6 +297,46 @@ test("dashboard pause endpoint validates its method, auth, and body", async () =
       invalidBody as FunctionResponse
     );
     assert.equal(invalidBody.statusCode, 400);
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.DASHBOARD_API_SECRET;
+    } else {
+      process.env.DASHBOARD_API_SECRET = previousSecret;
+    }
+  }
+});
+
+test("dashboard settings endpoint validates authorization and all values", async () => {
+  const previousSecret = process.env.DASHBOARD_API_SECRET;
+  process.env.DASHBOARD_API_SECRET = "test-dashboard-key";
+  try {
+    const wrongMethod = new MockResponse();
+    await updateDashboardSettings(
+      request("GET", "test-dashboard-key"),
+      wrongMethod as FunctionResponse
+    );
+    assert.equal(wrongMethod.statusCode, 405);
+
+    const unauthorized = new MockResponse();
+    await updateDashboardSettings(
+      request("POST", undefined, { settings: null }),
+      unauthorized as FunctionResponse
+    );
+    assert.equal(unauthorized.statusCode, 401);
+
+    const invalid = new MockResponse();
+    await updateDashboardSettings(
+      request("POST", "test-dashboard-key", {
+        settings: {
+          symbols: ["not-a-market"],
+          interval: "tomorrow",
+          scanIntervalMs: 1,
+          minRewardRisk: 0,
+        },
+      }),
+      invalid as FunctionResponse
+    );
+    assert.equal(invalid.statusCode, 400);
   } finally {
     if (previousSecret === undefined) {
       delete process.env.DASHBOARD_API_SECRET;

@@ -13,6 +13,12 @@
     "api/dashboard/status.ts": {
       "maxDuration": 15
     },
+    "api/dashboard/settings.ts": {
+      "maxDuration": 15
+    },
+    "api/dashboard/strategies.ts": {
+      "maxDuration": 15
+    },
     "api/dashboard/pause.ts": {
       "maxDuration": 15
     },

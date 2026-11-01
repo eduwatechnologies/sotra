@@ -1,6 +1,8 @@
 import { Telegraf } from "telegraf";
 import { registerTelegramController } from "./controllers/telegram-controller";
 import { loadConfig, type AppConfig } from "./config";
+import { applyDashboardSettings } from "./dashboard-settings";
+import { applyStrategyProfile } from "./strategy-profiles";
 import { safeErrorText } from "./logging";
 import { StateStore, type StateRepository } from "./models/state";
 import { UpstashStateStore } from "./models/upstash-state";
@@ -51,10 +53,20 @@ export async function createRuntime(
     bot,
     scanner,
     state,
-    generateMorningReport: () =>
-      generateMorningReport(config, {
-        fetchCandles,
-      }),
+    generateMorningReport: async () => {
+      const currentState = await state.get();
+      const configured = applyDashboardSettings(config, currentState.dashboardSettings);
+      return generateMorningReport(
+        applyStrategyProfile(
+          configured,
+          currentState.strategyProfiles,
+          currentState.activeStrategyProfileId
+        ),
+        {
+          fetchCandles,
+        }
+      );
+    },
   };
 }
 
@@ -95,7 +107,11 @@ export async function startApplication(config: AppConfig = loadConfig()): Promis
   scheduler = new ScanScheduler({
     intervalMs: config.scanIntervalMs,
     run: async () => {
-      if (!(await state.get()).paused) {
+      const currentState = await state.get();
+      scheduler?.setIntervalMs(
+        currentState.dashboardSettings?.scanIntervalMs ?? config.scanIntervalMs
+      );
+      if (!currentState.paused) {
         await scanner.scan({ publishAlerts: true, scheduled: true });
       }
     },

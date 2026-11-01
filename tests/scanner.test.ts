@@ -112,6 +112,71 @@ test("manual scans analyze while paused but do not deliver alerts", async () => 
   }
 });
 
+test("scans use persisted dashboard settings", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-scanner-"));
+  try {
+    const state = await createState(directory);
+    await state.setDashboardSettings({
+      symbols: ["GBP/USD"],
+      interval: "15min",
+      scanIntervalMs: 600_000,
+      minRewardRisk: 4,
+    });
+    const requests: Array<{ symbol: string; interval: string }> = [];
+    const scanner = new SignalScanner(config, state, {
+      fetchCandles: async (symbol, interval) => {
+        requests.push({ symbol, interval });
+        return fixture();
+      },
+      publish: async () => undefined,
+      logError: () => assert.fail("Unexpected scan error"),
+      now: () => fixture()[6].timestamp + 5 * 60_000,
+    });
+
+    const result = await scanner.scan({ publishAlerts: false, scheduled: false });
+
+    assert.deepEqual(requests, [{ symbol: "GBP/USD", interval: "15min" }]);
+    assert.equal(result[0].signal?.rewardRisk, 4);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("scans use the active persisted strategy profile", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-scanner-"));
+  try {
+    const state = await createState(directory);
+    await state.setStrategyProfiles(
+      [
+        {
+          id: "wide-structure",
+          name: "Wide structure",
+          minRewardRisk: 4,
+          swingLookback: 3,
+          structureLookback: 2,
+          maxBarsSinceSweep: 3,
+          atrPeriod: 3,
+          maxRiskAtrMultiple: 2,
+          maxCandleAgeMinutes: 20,
+        },
+      ],
+      "wide-structure"
+    );
+    const scanner = new SignalScanner(config, state, {
+      fetchCandles: async () => fixture(),
+      publish: async () => undefined,
+      logError: () => assert.fail("Unexpected scan error"),
+      now: () => fixture()[6].timestamp + 5 * 60_000,
+    });
+
+    const result = await scanner.scan({ publishAlerts: false, scheduled: false });
+
+    assert.equal(result[0].signal?.rewardRisk, 4);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("rejects overlapping scans", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-scanner-"));
   try {
