@@ -73,6 +73,7 @@ export function registerTelegramController(
         `Manual scan failed. ${safeErrorText(error, [
           config.telegramBotToken,
           config.twelveDataApiKey,
+          process.env.DATABASE_URL ?? "",
         ])}`
       );
       await ctx.reply("The scan could not be completed. Check the service logs.");

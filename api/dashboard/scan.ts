@@ -49,6 +49,7 @@ export default async function dashboardScan(
         process.env.TELEGRAM_BOT_TOKEN ?? "",
         process.env.TWELVE_DATA_API_KEY ?? "",
         process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
+        process.env.DATABASE_URL ?? "",
         process.env.DASHBOARD_API_SECRET ?? "",
       ])}`
     );

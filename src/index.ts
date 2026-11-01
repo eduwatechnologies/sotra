@@ -7,6 +7,7 @@ startApplication().catch((error: unknown) => {
     `Sotra Signals failed to start. ${safeErrorText(error, [
       process.env.TELEGRAM_BOT_TOKEN ?? "",
       process.env.TWELVE_DATA_API_KEY ?? "",
+      process.env.DATABASE_URL ?? "",
     ])}`
   );
   process.exitCode = 1;

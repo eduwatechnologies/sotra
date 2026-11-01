@@ -18,3 +18,18 @@ export interface Signal {
   timestamp: number;
   rationale: string;
 }
+
+export function isSignal(value: unknown): value is Signal {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const signal = value as Record<string, unknown>;
+  return (
+    typeof signal.symbol === "string" &&
+    (signal.direction === "BUY" || signal.direction === "SELL") &&
+    ["entry", "stopLoss", "takeProfit", "rewardRisk", "timestamp"].every(
+      (key) => typeof signal[key] === "number" && Number.isFinite(signal[key])
+    ) &&
+    typeof signal.rationale === "string"
+  );
+}

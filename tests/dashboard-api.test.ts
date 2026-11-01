@@ -7,6 +7,7 @@ import { Socket } from "node:net";
 import test from "node:test";
 import dashboardScan from "../api/dashboard/scan";
 import dashboardStatus from "../api/dashboard/status";
+import dashboardPerformance from "../api/dashboard/performance";
 import updateDashboardPause from "../api/dashboard/pause";
 import updateDashboardSettings from "../api/dashboard/settings";
 import dashboardStrategies from "../api/dashboard/strategies";
@@ -77,6 +78,13 @@ test("strategy profile API requires the dashboard bearer secret", async () => {
   assert.equal(unauthorized.statusCode, 401);
 });
 
+test("signal performance API requires the dashboard bearer secret", async () => {
+  const response = new MockResponse();
+  await dashboardPerformance(request("GET"), response as FunctionResponse);
+  assert.equal(response.statusCode, 401);
+  assert.deepEqual(response.jsonBody, { error: "Unauthorized" });
+});
+
 test("authorized dashboard requests read and update the shared bot state", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sotra-dashboard-api-"));
   const environment = [
@@ -86,6 +94,7 @@ test("authorized dashboard requests read and update the shared bot state", async
     "TWELVE_DATA_API_KEY",
     "STATE_BACKEND",
     "STATE_FILE",
+    "DATABASE_URL",
     "SCAN_INTERVAL_MS",
     "MIN_REWARD_RISK",
     "VERCEL",
@@ -100,6 +109,7 @@ test("authorized dashboard requests read and update the shared bot state", async
     TWELVE_DATA_API_KEY: "test-market-data-key",
     STATE_BACKEND: "file",
     STATE_FILE: path.join(directory, "state.json"),
+    DATABASE_URL: "",
     SCAN_INTERVAL_MS: "1800000",
     MIN_REWARD_RISK: "3",
     VERCEL: "0",
@@ -187,6 +197,14 @@ test("authorized dashboard requests read and update the shared bot state", async
       (activateStrategy.jsonBody as typeof created).activeProfileId,
       created.profiles[0].id
     );
+
+    const performance = new MockResponse();
+    await dashboardPerformance(
+      request("GET", "test-dashboard-key"),
+      performance as FunctionResponse
+    );
+    assert.equal(performance.statusCode, 200);
+    assert.deepEqual(performance.jsonBody, { strategies: [], signals: [] });
 
     const activeDelete = new MockResponse();
     await dashboardStrategies(

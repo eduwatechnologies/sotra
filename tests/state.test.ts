@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { signalKey, StateStore } from "../src/models/state";
 import type { Signal } from "../src/models/domain";
+import type { TrackedSignal } from "../src/models/signal-history";
 
 const signal: Signal = {
   symbol: "EUR/USD",
@@ -15,6 +16,29 @@ const signal: Signal = {
   rewardRisk: 2,
   timestamp: Date.UTC(2026, 0, 1),
   rationale: "Liquidity sweep and structure shift.",
+};
+const trackedSignal: TrackedSignal = {
+  id: "history-id",
+  key: signalKey(signal),
+  signal,
+  strategy: {
+    id: "default",
+    name: "Default strategy",
+    parameters: {
+      minRewardRisk: 2,
+      swingLookback: 3,
+      structureLookback: 2,
+      maxBarsSinceSweep: 3,
+      atrPeriod: 3,
+      maxRiskAtrMultiple: 2,
+      maxCandleAgeMinutes: 20,
+    },
+  },
+  detectedAt: signal.timestamp + 1,
+  candleInterval: "5min",
+  deliveryStatus: "failed",
+  outcome: "unresolved",
+  outcomeAt: null,
 };
 
 test("persists pause state, latest signal, and bounded deduplication keys", async () => {
@@ -47,6 +71,7 @@ test("persists pause state, latest signal, and bounded deduplication keys", asyn
       "conservative"
     );
     await state.recordLatestSignal(signal);
+    await state.recordDetectedSignal(trackedSignal);
     await state.recordSentSignal(signalKey(signal));
     await state.recordSentSignal("second");
     await state.recordSentSignal("third");
@@ -63,6 +88,7 @@ test("persists pause state, latest signal, and bounded deduplication keys", asyn
     assert.equal(loaded.activeStrategyProfileId, "conservative");
     assert.equal(loaded.strategyProfiles[0].name, "Conservative");
     assert.deepEqual(loaded.latestSignal, signal);
+    assert.deepEqual(loaded.signalHistory, [trackedSignal]);
     assert.equal(loaded.sentSignalKeys.length, 2);
     assert.equal(await restarted.hasSent(signalKey(signal)), false);
     assert.equal(JSON.parse(await readFile(file, "utf8")).paused, true);
@@ -166,6 +192,7 @@ test("loads state files created before dashboard settings were added", async () 
     const state = new StateStore(file, 10);
     const loaded = await state.load();
     assert.equal(loaded.dashboardSettings, null);
+    assert.deepEqual(loaded.signalHistory, []);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

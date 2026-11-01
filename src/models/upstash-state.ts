@@ -168,6 +168,7 @@ export class UpstashStateStore implements StateRepository {
       dashboardSettings: parseDashboardSettings(dashboardSettings),
       strategyProfiles: strategyConfiguration.profiles,
       activeStrategyProfileId: strategyConfiguration.activeProfileId,
+      signalHistory: [],
     };
   }
 

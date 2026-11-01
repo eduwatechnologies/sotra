@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Signal } from "./domain";
+import { isSignal, type Signal } from "./domain";
 import {
   isDashboardSettings,
   type DashboardSettings,
@@ -10,6 +10,16 @@ import {
   isStrategyProfileList,
   type StrategyProfile,
 } from "../strategy-profiles";
+import {
+  isTrackedSignal,
+  strategyPerformance,
+  type SignalDeliveryStatus,
+  type SignalOutcome,
+  type StrategyPerformance,
+  type TrackedSignal,
+} from "./signal-history";
+
+export { isSignal } from "./domain";
 
 export interface PersistedState {
   paused: boolean;
@@ -18,6 +28,18 @@ export interface PersistedState {
   dashboardSettings: DashboardSettings | null;
   strategyProfiles: StrategyProfile[];
   activeStrategyProfileId: string | null;
+  signalHistory: TrackedSignal[];
+}
+
+function cloneTrackedSignal(record: TrackedSignal): TrackedSignal {
+  return {
+    ...record,
+    signal: { ...record.signal },
+    strategy: {
+      ...record.strategy,
+      parameters: { ...record.strategy.parameters },
+    },
+  };
 }
 
 export interface StateRepository {
@@ -45,22 +67,8 @@ const DEFAULT_STATE: PersistedState = {
   dashboardSettings: null,
   strategyProfiles: [],
   activeStrategyProfileId: null,
+  signalHistory: [],
 };
-
-export function isSignal(value: unknown): value is Signal {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const signal = value as Record<string, unknown>;
-  return (
-    typeof signal.symbol === "string" &&
-    (signal.direction === "BUY" || signal.direction === "SELL") &&
-    ["entry", "stopLoss", "takeProfit", "rewardRisk", "timestamp"].every(
-      (key) => typeof signal[key] === "number" && Number.isFinite(signal[key])
-    ) &&
-    typeof signal.rationale === "string"
-  );
-}
 
 function parseState(value: unknown): PersistedState {
   if (value === null || typeof value !== "object") {
@@ -76,6 +84,10 @@ function parseState(value: unknown): PersistedState {
       data.dashboardSettings === undefined ||
       data.dashboardSettings === null ||
       isDashboardSettings(data.dashboardSettings)
+    ) ||
+    !(
+      data.signalHistory === undefined ||
+      (Array.isArray(data.signalHistory) && data.signalHistory.every(isTrackedSignal))
     ) ||
     !(
       data.strategyProfiles === undefined ||
@@ -109,6 +121,10 @@ function parseState(value: unknown): PersistedState {
       typeof data.activeStrategyProfileId === "string"
         ? data.activeStrategyProfileId
         : null,
+    signalHistory:
+      Array.isArray(data.signalHistory) && data.signalHistory.every(isTrackedSignal)
+        ? data.signalHistory
+        : [],
   };
 }
 
@@ -158,6 +174,7 @@ export class StateStore {
         : null,
       strategyProfiles: this.data.strategyProfiles.map((profile) => ({ ...profile })),
       activeStrategyProfileId: this.data.activeStrategyProfileId,
+      signalHistory: this.data.signalHistory.map(cloneTrackedSignal),
     };
   }
 
@@ -212,6 +229,73 @@ export class StateStore {
 
   async recordLatestSignal(signal: Signal): Promise<void> {
     await this.update((current) => ({ ...current, latestSignal: signal }));
+  }
+
+  async recordDetectedSignal(record: TrackedSignal): Promise<TrackedSignal> {
+    if (!isTrackedSignal(record)) {
+      throw new Error("Signal history record is invalid.");
+    }
+    let stored!: TrackedSignal;
+    await this.update((current) => {
+      const existing = current.signalHistory.find(({ key }) => key === record.key);
+      stored = cloneTrackedSignal(existing ?? record);
+      return existing
+        ? current
+        : { ...current, signalHistory: [...current.signalHistory, cloneTrackedSignal(record)] };
+    });
+    return stored;
+  }
+
+  async getSignal(key: string): Promise<TrackedSignal | null> {
+    const record = this.data.signalHistory.find((item) => item.key === key);
+    return record ? cloneTrackedSignal(record) : null;
+  }
+
+  async updateDeliveryStatus(key: string, status: SignalDeliveryStatus): Promise<void> {
+    await this.update((current) => ({
+      ...current,
+      signalHistory: current.signalHistory.map((record) =>
+        record.key === key && record.deliveryStatus !== "succeeded"
+          ? { ...record, deliveryStatus: status }
+          : record
+      ),
+    }));
+  }
+
+  async getUnresolvedSignals(symbol: string): Promise<TrackedSignal[]> {
+    return this.data.signalHistory
+      .filter((record) => record.signal.symbol === symbol && record.outcome === "unresolved")
+      .map(cloneTrackedSignal);
+  }
+
+  async setSignalOutcome(
+    key: string,
+    outcome: "ambiguous" | "win" | "loss",
+    at: number
+  ): Promise<void> {
+    await this.update((current) => ({
+      ...current,
+      signalHistory: current.signalHistory.map((record) =>
+        record.key === key && record.outcome === "unresolved"
+          ? { ...record, outcome, outcomeAt: at }
+          : record
+      ),
+    }));
+  }
+
+  async getStrategyPerformance(): Promise<StrategyPerformance[]> {
+    return strategyPerformance(this.data.signalHistory);
+  }
+
+  async getRecentSignals(limit: number): Promise<TrackedSignal[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new Error("Signal history limit must be an integer between 1 and 100.");
+    }
+    return this.data.signalHistory
+      .slice()
+      .sort((left, right) => right.detectedAt - left.detectedAt)
+      .slice(0, limit)
+      .map(cloneTrackedSignal);
   }
 
   async recordSentSignal(key: string): Promise<void> {

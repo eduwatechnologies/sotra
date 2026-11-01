@@ -20,10 +20,12 @@
     "@neon/env": "^1.6.6",
     "@upstash/redis": "^1.40.0",
     "dotenv": "^18.0.9",
+    "pg": "^8.23.1",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

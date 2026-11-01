@@ -41,6 +41,7 @@ export default async function updateDashboardPause(
       `Dashboard pause update failed. ${safeErrorText(error, [
         process.env.TELEGRAM_BOT_TOKEN ?? "",
         process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
+        process.env.DATABASE_URL ?? "",
         process.env.DASHBOARD_API_SECRET ?? "",
       ])}`
     );

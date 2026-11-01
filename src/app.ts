@@ -6,6 +6,8 @@ import { applyStrategyProfile } from "./strategy-profiles";
 import { safeErrorText } from "./logging";
 import { StateStore, type StateRepository } from "./models/state";
 import { UpstashStateStore } from "./models/upstash-state";
+import { PostgresSignalHistoryStore } from "./models/postgres-signal-history";
+import type { SignalHistoryRepository } from "./models/signal-history";
 import { fetchCandles } from "./services/market-data";
 import { generateMorningReport } from "./services/morning-report";
 import { SignalScanner } from "./services/scanner";
@@ -20,21 +22,35 @@ export interface ApplicationRuntime {
   bot: Telegraf;
   scanner: SignalScanner;
   state: StateRepository;
+  signalHistory: SignalHistoryRepository;
   generateMorningReport: () => ReturnType<typeof generateMorningReport>;
 }
 
-function createStateRepository(config: AppConfig): StateRepository {
+function createStorage(config: AppConfig): {
+  state: StateRepository;
+  signalHistory: SignalHistoryRepository;
+} {
   if (config.stateBackend === "upstash") {
-    return UpstashStateStore.fromEnv(process.env, config.maxStoredSignalKeys);
+    return {
+      state: UpstashStateStore.fromEnv(process.env, config.maxStoredSignalKeys),
+      signalHistory: PostgresSignalHistoryStore.fromEnv(process.env),
+    };
   }
-  return new StateStore(config.stateFile, config.maxStoredSignalKeys);
+  const state = new StateStore(config.stateFile, config.maxStoredSignalKeys);
+  const signalHistory = process.env.DATABASE_URL?.trim()
+    ? PostgresSignalHistoryStore.fromEnv(process.env)
+    : state;
+  return { state, signalHistory };
 }
 
 export async function createRuntime(
   config: AppConfig = loadConfig()
 ): Promise<ApplicationRuntime> {
-  const state = createStateRepository(config);
+  const { state, signalHistory } = createStorage(config);
   await state.load();
+  if (signalHistory instanceof PostgresSignalHistoryStore) {
+    await signalHistory.initialize();
+  }
 
   const bot = new Telegraf(config.telegramBotToken);
   const scanner = new SignalScanner(config, state, {
@@ -42,9 +58,14 @@ export async function createRuntime(
     publish: async (signal) => {
       await bot.telegram.sendMessage(config.telegramChatId, formatSignal(signal));
     },
+    history: signalHistory,
     logError: (message, error) =>
       console.error(
-        `${message} ${safeErrorText(error, [config.telegramBotToken, config.twelveDataApiKey])}`
+        `${message} ${safeErrorText(error, [
+          config.telegramBotToken,
+          config.twelveDataApiKey,
+          process.env.DATABASE_URL ?? "",
+        ])}`
       ),
   });
   registerTelegramController(bot, config, scanner, state);
@@ -53,6 +74,7 @@ export async function createRuntime(
     bot,
     scanner,
     state,
+    signalHistory,
     generateMorningReport: async () => {
       const currentState = await state.get();
       const configured = applyDashboardSettings(config, currentState.dashboardSettings);

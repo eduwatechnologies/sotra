@@ -1,9 +1,19 @@
+import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../config";
 import { fetchCandles } from "./market-data";
 import { analyzeCandles } from "./strategy";
 import { signalKey, type StateRepository } from "../models/state";
 import type { Signal } from "../models/domain";
-import { applyStrategyProfile } from "../strategy-profiles";
+import {
+  applyStrategyProfile,
+  strategyParametersFromConfig,
+} from "../strategy-profiles";
+import {
+  evaluateSignalOutcome,
+  type SignalHistoryRepository,
+  type StrategySnapshot,
+  type TrackedSignal,
+} from "../models/signal-history";
 
 export interface ScanResult {
   symbol: string;
@@ -17,6 +27,7 @@ export interface ScannerDependencies {
   fetchCandles: typeof fetchCandles;
   publish: (signal: Signal) => Promise<void>;
   logError: (message: string, error: unknown) => void;
+  history: SignalHistoryRepository;
   now?: () => number;
 }
 
@@ -67,13 +78,44 @@ export class SignalScanner {
             config.interval,
             config.twelveDataApiKey
           );
-          const signal = analyzeCandles(candles, symbol, config, this.dependencies.now?.());
+          const now = this.dependencies.now?.() ?? Date.now();
+          const unresolvedSignals = await this.dependencies.history.getUnresolvedSignals(symbol);
+          const outcomeCandles = new Map([[config.interval, candles]]);
+          for (const previous of unresolvedSignals) {
+            let candlesForSignal = outcomeCandles.get(previous.candleInterval);
+            if (!candlesForSignal) {
+              try {
+                candlesForSignal = await this.dependencies.fetchCandles(
+                  symbol,
+                  previous.candleInterval,
+                  config.twelveDataApiKey
+                );
+                outcomeCandles.set(previous.candleInterval, candlesForSignal);
+              } catch (error) {
+                this.dependencies.logError(
+                  `Outcome evaluation data unavailable for ${symbol} at ${previous.candleInterval}.`,
+                  error
+                );
+                continue;
+              }
+            }
+            const evaluation = evaluateSignalOutcome(previous, candlesForSignal, now);
+            if (evaluation) {
+              await this.dependencies.history.setSignalOutcome(
+                previous.key,
+                evaluation.outcome,
+                evaluation.at
+              );
+            }
+          }
+
+          const signal = analyzeCandles(candles, symbol, config, now);
           if (!signal) {
             const latestCompleted = candles.length > 1 ? candles[candles.length - 2] : undefined;
             if (
               latestCompleted &&
-              (latestCompleted.timestamp > (this.dependencies.now?.() ?? Date.now()) ||
-                (this.dependencies.now?.() ?? Date.now()) - latestCompleted.timestamp >
+              (latestCompleted.timestamp > now ||
+                now - latestCompleted.timestamp >
                   config.maxCandleAgeMinutes * 60_000)
             ) {
               console.warn(`Skipping stale or future candle data for ${symbol}.`);
@@ -84,7 +126,27 @@ export class SignalScanner {
 
           await this.state.recordLatestSignal(signal);
           const key = signalKey(signal);
-          if (await this.state.hasSent(key)) {
+          const strategy = this.strategySnapshot(
+            state.strategyProfiles,
+            state.activeStrategyProfileId,
+            config
+          );
+          const trackedSignal: TrackedSignal = await this.dependencies.history.recordDetectedSignal({
+            id: randomUUID(),
+            key,
+            signal,
+            strategy,
+            detectedAt: now,
+            candleInterval: config.interval,
+            deliveryStatus: "not_attempted",
+            outcome: "unresolved",
+            outcomeAt: null,
+          });
+          const alreadySent = await this.state.hasSent(key);
+          if (alreadySent && trackedSignal.deliveryStatus !== "succeeded") {
+            await this.dependencies.history.updateDeliveryStatus(key, "succeeded");
+          }
+          if (alreadySent || trackedSignal.deliveryStatus === "succeeded") {
             results.push({ symbol, status: "duplicate", signal });
             continue;
           }
@@ -98,10 +160,16 @@ export class SignalScanner {
             continue;
           }
           try {
+            await this.dependencies.history.updateDeliveryStatus(key, "attempting");
             await this.dependencies.publish(signal);
+            await this.dependencies.history.updateDeliveryStatus(key, "succeeded");
             await this.state.recordSentSignal(key);
           } catch (error) {
-            await this.state.releaseSignal(key);
+            try {
+              await this.dependencies.history.updateDeliveryStatus(key, "failed");
+            } finally {
+              await this.state.releaseSignal(key);
+            }
             throw error;
           }
           results.push({ symbol, status: "signal", signal, sent: true });
@@ -121,5 +189,25 @@ export class SignalScanner {
       await this.state.releaseScanLock();
       console.info("Market scan finished.");
     }
+  }
+
+  private strategySnapshot(
+    profiles: Parameters<typeof applyStrategyProfile>[1],
+    activeProfileId: string | null,
+    config: AppConfig
+  ): StrategySnapshot {
+    if (activeProfileId === null) {
+      return {
+        id: "default",
+        name: "Default strategy",
+        parameters: strategyParametersFromConfig(config),
+      };
+    }
+    const profile = profiles.find(({ id }) => id === activeProfileId);
+    if (!profile) {
+      throw new Error("Active strategy profile is missing.");
+    }
+    const { id, name, ...parameters } = profile;
+    return { id, name, parameters };
   }
 }

@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import type { AppConfig } from "../src/config";
 import { SignalScanner } from "../src/services/scanner";
-import { StateStore } from "../src/models/state";
+import { signalKey, StateStore } from "../src/models/state";
 import type { Candle } from "../src/models/domain";
 
 const config: AppConfig = {
@@ -62,6 +62,7 @@ test("deduplicates delivered signals after a process restart", async () => {
         deliveryCount += 1;
       },
       logError: () => assert.fail("Unexpected scan error"),
+      history: firstState,
       now: () => now,
     });
     const firstResult = await first.scan({ publishAlerts: true, scheduled: true });
@@ -73,6 +74,7 @@ test("deduplicates delivered signals after a process restart", async () => {
         deliveryCount += 1;
       },
       logError: () => assert.fail("Unexpected scan error"),
+      history: restartedState,
       now: () => now,
     });
     const restartedResult = await restarted.scan({ publishAlerts: true, scheduled: true });
@@ -81,6 +83,11 @@ test("deduplicates delivered signals after a process restart", async () => {
     assert.equal(firstResult[0].sent, true);
     assert.equal(restartedResult[0].status, "duplicate");
     assert.equal(deliveryCount, 1);
+    assert.equal((await restartedState.getRecentSignals(10)).length, 1);
+    assert.equal(
+      (await restartedState.getSignal(signalKey(firstResult[0].signal!)))?.deliveryStatus,
+      "succeeded"
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -99,6 +106,7 @@ test("manual scans analyze while paused but do not deliver alerts", async () => 
         deliveryCount += 1;
       },
       logError: () => assert.fail("Unexpected scan error"),
+      history: state,
       now: () => now,
     });
 
@@ -107,6 +115,8 @@ test("manual scans analyze while paused but do not deliver alerts", async () => 
     assert.equal(result[0].sent, false);
     assert.equal((await state.get()).paused, true);
     assert.equal(deliveryCount, 0);
+    const history = await state.getRecentSignals(10);
+    assert.equal(history[0].deliveryStatus, "not_attempted");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -130,6 +140,7 @@ test("scans use persisted dashboard settings", async () => {
       },
       publish: async () => undefined,
       logError: () => assert.fail("Unexpected scan error"),
+      history: state,
       now: () => fixture()[6].timestamp + 5 * 60_000,
     });
 
@@ -137,6 +148,10 @@ test("scans use persisted dashboard settings", async () => {
 
     assert.deepEqual(requests, [{ symbol: "GBP/USD", interval: "15min" }]);
     assert.equal(result[0].signal?.rewardRisk, 4);
+    const stored = await state.getSignal(signalKey(result[0].signal!));
+    assert.equal(stored?.strategy.id, "default");
+    assert.equal(stored?.strategy.name, "Default strategy");
+    assert.equal(stored?.strategy.parameters.minRewardRisk, 4);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -166,12 +181,22 @@ test("scans use the active persisted strategy profile", async () => {
       fetchCandles: async () => fixture(),
       publish: async () => undefined,
       logError: () => assert.fail("Unexpected scan error"),
+      history: state,
       now: () => fixture()[6].timestamp + 5 * 60_000,
     });
 
     const result = await scanner.scan({ publishAlerts: false, scheduled: false });
 
     assert.equal(result[0].signal?.rewardRisk, 4);
+    const stored = await state.getSignal(signalKey(result[0].signal!));
+    assert.equal(stored?.strategy.id, "wide-structure");
+    assert.equal(stored?.strategy.name, "Wide structure");
+    assert.equal(stored?.strategy.parameters.minRewardRisk, 4);
+    await state.setStrategyProfiles([], null);
+    assert.equal(
+      (await state.getSignal(signalKey(result[0].signal!)))?.strategy.name,
+      "Wide structure"
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -202,15 +227,22 @@ test("rejects overlapping scans", async () => {
             }
           },
           logError: () => undefined,
+          history: state,
           now: () => now,
         });
 
         const failed = await scanner.scan({ publishAlerts: true, scheduled: true });
+        const signalRecord = (await state.getRecentSignals(1))[0];
+        assert.equal(signalRecord.deliveryStatus, "failed");
         const retried = await scanner.scan({ publishAlerts: true, scheduled: true });
         assert.equal(failed[0].status, "error");
         assert.equal(retried[0].status, "signal");
         assert.equal(retried[0].sent, true);
         assert.equal(deliveryCount, 2);
+        assert.equal(
+          (await state.getSignal(signalRecord.key))?.deliveryStatus,
+          "succeeded"
+        );
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -225,6 +257,7 @@ test("rejects overlapping scans", async () => {
       },
       publish: async () => undefined,
       logError: () => assert.fail("Unexpected scan error"),
+      history: state,
     });
     const activeScan = scanner.scan({ publishAlerts: false, scheduled: false });
     await started;
@@ -236,6 +269,7 @@ test("rejects overlapping scans", async () => {
       fetchCandles: async () => [],
       publish: async () => undefined,
       logError: () => assert.fail("Unexpected scan error"),
+      history: state,
     });
     await assert.rejects(
       secondScanner.scan({ publishAlerts: false, scheduled: false }),

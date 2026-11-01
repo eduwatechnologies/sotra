@@ -19,6 +19,9 @@
     "api/dashboard/strategies.ts": {
       "maxDuration": 15
     },
+    "api/dashboard/performance.ts": {
+      "maxDuration": 15
+    },
     "api/dashboard/pause.ts": {
       "maxDuration": 15
     },
