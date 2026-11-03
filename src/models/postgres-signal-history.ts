@@ -34,6 +34,25 @@ const ADD_CANDLE_INTERVAL_COLUMN = `
 ALTER TABLE sotra_signal_history
 ADD COLUMN IF NOT EXISTS candle_interval TEXT NOT NULL DEFAULT '5min'`;
 
+const LEGACY_SSL_MODES = new Set(["prefer", "require", "verify-ca"]);
+
+export function normalizePostgresSslMode(connectionString: string): string {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error("DATABASE_URL must be a valid PostgreSQL connection URL.");
+  }
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+    throw new Error("DATABASE_URL must use the postgres or postgresql protocol.");
+  }
+  const sslMode = url.searchParams.get("sslmode")?.toLowerCase();
+  if (sslMode && LEGACY_SSL_MODES.has(sslMode)) {
+    url.searchParams.set("sslmode", "verify-full");
+  }
+  return url.toString();
+}
+
 function parseJson(value: unknown): unknown {
   return typeof value === "string" ? JSON.parse(value) as unknown : value;
 }
@@ -91,7 +110,7 @@ export class PostgresSignalHistoryStore implements SignalHistoryRepository {
     }
     return new PostgresSignalHistoryStore(
       new Pool({
-        connectionString,
+        connectionString: normalizePostgresSslMode(connectionString),
         max: 1,
         idleTimeoutMillis: 10_000,
         connectionTimeoutMillis: 10_000,

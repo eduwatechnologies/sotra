@@ -1,10 +1,40 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { PostgresSignalHistoryStore } from "../src/models/postgres-signal-history";
+import {
+  normalizePostgresSslMode,
+  PostgresSignalHistoryStore,
+} from "../src/models/postgres-signal-history";
 import type { TrackedSignal } from "../src/models/signal-history";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+
+test("normalizes legacy PostgreSQL SSL modes without weakening certificate verification", () => {
+  for (const mode of ["prefer", "require", "verify-ca"]) {
+    const result = new URL(
+      normalizePostgresSslMode(
+        `postgresql://user:password@db.example.test/app?sslmode=${mode}&channel_binding=require`
+      )
+    );
+    assert.equal(result.searchParams.get("sslmode"), "verify-full");
+    assert.equal(result.searchParams.get("channel_binding"), "require");
+  }
+  assert.equal(
+    new URL(
+      normalizePostgresSslMode(
+        "postgresql://user:password@db.example.test/app?sslmode=verify-full"
+      )
+    ).searchParams.get("sslmode"),
+    "verify-full"
+  );
+  assert.equal(
+    new URL(
+      normalizePostgresSslMode("postgresql://user:password@db.example.test/app")
+    ).searchParams.has("sslmode"),
+    false
+  );
+  assert.throws(() => normalizePostgresSslMode("not a database URL"), /valid PostgreSQL/);
+});
 
 test(
   "PostgreSQL schema initialization and signal inserts are safe to retry",
